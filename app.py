@@ -168,8 +168,8 @@ This assessment is designed to support your continued development and help us im
 **Structure**
 
 You will answer 16 questions about key leadership behaviors in two sections:
-1. Current frequency (how often you perform them now)
-2. Change in frequency (how that frequency compares to before the course)
+1. **Current Frequency** – How often you intentionally demonstrate each behavior now, at the conclusion of the course.
+2. **Change in Frequency** – How your current approach compares to how you typically operated before the course.
 
 Because leadership looks different across contexts, select one role and use it consistently so your responses are accurate and comparable.
 """
