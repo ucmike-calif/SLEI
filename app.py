@@ -183,6 +183,28 @@ init_state()
 st.set_page_config(page_title="SLEI v2.0", layout="wide")
 st.title("STAR Leadership Effectiveness Index (SLEI) – v2 Pilot")
 
+# Readability / layout tweaks
+st.markdown(
+    """
+<style>
+/* Keep the column readable on large screens */
+.block-container { max-width: 1050px; padding-top: 2rem; }
+
+/* Tighten vertical whitespace between widgets */
+div[data-testid="stVerticalBlock"] > div { margin-bottom: 0.6rem; }
+
+/* Tighten radio spacing a bit */
+div[role="radiogroup"] { gap: 0.5rem; }
+div[role="radiogroup"] > label { margin-right: 0.75rem; }
+
+/* Slightly improve overall readability */
+html, body, [class*="css"] { font-size: 16px; line-height: 1.35; }
+</style>
+""",
+    unsafe_allow_html=True,
+)
+
+
 st.markdown(
     """**Purpose**
 
@@ -282,13 +304,16 @@ elif st.session_state.step == 2:
     )
 
     for qid, text, _ in ITEMS:
-        st.session_state.freq_sel[qid] = st.radio(
-            f"Q{qid}. {text}",
-            FREQ_OPTIONS,
-            index=None,
-            horizontal=True,
-            key=f"freq_{qid}",
-        )
+        with st.container(border=True):
+            st.markdown(f"**Q{qid}.** {text}")
+            st.session_state.freq_sel[qid] = st.radio(
+                label="",
+                options=FREQ_OPTIONS,
+                index=None,
+                horizontal=True,
+                label_visibility="collapsed",
+                key=f"freq_{qid}",
+            )
 
     cols = st.columns([1, 1, 6])
     with cols[0]:
@@ -321,13 +346,16 @@ elif st.session_state.step == 3:
         for qid, text, _ in ITEMS:
             if qid not in non_na_ids:
                 continue
-            st.session_state.chg_sel[qid] = st.radio(
-                f"Q{qid}. {text}",
-                CHANGE_OPTIONS,
-                index=None,
-                horizontal=True,
-                key=f"chg_{qid}",
-            )
+            with st.container(border=True):
+                st.markdown(f"**Q{qid}.** {text}")
+                st.session_state.chg_sel[qid] = st.radio(
+                    label="",
+                    options=CHANGE_OPTIONS,
+                    index=None,
+                    horizontal=True,
+                    label_visibility="collapsed",
+                    key=f"chg_{qid}",
+                )
 
     cols = st.columns([1, 1, 6])
     with cols[0]:
@@ -345,96 +373,75 @@ elif st.session_state.step == 3:
 
 
 # -----------------------
-# Step 4 of 5 — Optional feedback
+# Step 4 of 5 — Testimonial (optional)
 # -----------------------
 elif st.session_state.step == 4:
-    st.header("Step 4 of 5 — Optional feedback")
+    st.header("Step 4 of 5 — Testimonial (optional)")
 
+    # We compute scores in the background for reporting/dashboard use,
+    # but we keep the survey experience focused and lightweight.
     freq_num, chg_num, overall, overall_desc, avg_change, growth = compute_scores()
 
-    st.markdown(f"**Overall score (current frequency):** {overall} / 5 — {overall_desc}")
     st.caption(
-        "This isn’t a grade. It’s a snapshot of how consistently these leadership behaviors show up in your day-to-day application."
-    )
-
-    st.markdown("**How to interpret your current score:**")
-    st.markdown("- **Consistently / Automatic (4.5–5.0):** behaviors are reliable defaults, even under pressure.")
-    st.markdown("- **Often (4.0–4.4):** behaviors show up most of the time; a solid strength.")
-    st.markdown("- **Sometimes (3.0–3.9):** behaviors are present but inconsistent; strong opportunity for reinforcement.")
-    st.markdown("- **Inconsistent (2.0–2.9):** behaviors show up occasionally; may require clearer systems or support.")
-    st.markdown("- **Rarely (≤1.9):** behaviors are not yet habitual; focus on small, repeatable practice.")
-
-    if avg_change is not None:
-        st.markdown(
-            f"**Average change in application (vs. before the course):** {round1(avg_change)} on a -2 to +2 scale"
-        )
-        st.caption(
-            "This reflects how your *application of these behaviors* has shifted over time, not your potential."
-        )
-        st.markdown("**Change scale reference:**")
-        st.markdown("- **-2:** Much less often applying the behaviors")
-        st.markdown("- **-1:** Slightly less often applying the behaviors")
-        st.markdown("- **0:** About the same level of application")
-        st.markdown("- **+1:** Slightly more often applying the behaviors")
-        st.markdown("- **+2:** Much more often applying the behaviors")
-
-    st.session_state.improve_feedback = st.text_area(
-        "Any suggestions to improve the course structure, processes, systems, or curriculum? (optional)",
-        value=st.session_state.improve_feedback,
-        height=140,
-    )
-
-    st.markdown("---")
-    st.subheader("Testimonial")
-    st.caption(
-        "If you’re willing, a helpful testimonial often includes: what changed for you, a concrete example, "
-        "and what you’d say to someone considering the program."
+        "This section is optional. If you choose to share a testimonial, it helps others understand the value of the program."
     )
 
     if growth:
+        st.markdown(
+            "**Guidance:** A helpful testimonial often includes (1) what changed for you, (2) one concrete example, "
+            "and (3) what you’d say to someone considering the program."
+        )
+
         st.session_state.testimonial = st.text_area(
             "If you’d like, share a short testimonial or comment about the program (optional)",
             value=st.session_state.testimonial,
-            height=140,
+            height=160,
         )
 
         st.session_state.willing_contact = st.checkbox(
-            "I’m open to being contacted about using my feedback/testimonial (optional)",
+            "I’m open to being contacted about using my testimonial (optional)",
             value=st.session_state.willing_contact,
         )
+
+        if st.session_state.willing_contact:
+            st.session_state.contact_name = st.text_input(
+                "Name (optional)",
+                value=st.session_state.contact_name,
+            )
+            st.session_state.contact_email = st.text_input(
+                "Email (optional)",
+                value=st.session_state.contact_email,
+            )
     else:
-        st.session_state.willing_contact = False
+        # If no positive shift is indicated, we keep things simple and skip the testimonial section.
         st.session_state.testimonial = ""
+        st.session_state.willing_contact = False
+        st.session_state.contact_name = ""
+        st.session_state.contact_email = ""
+        st.info("Next up: a final (optional) prompt for feedback to help us improve the program.")
 
     cols = st.columns([1, 1, 6])
     with cols[0]:
         st.button("← Back", on_click=go_prev)
-
-    next_label = "Next →" if st.session_state.willing_contact else "Review & submit →"
     with cols[1]:
-        st.button(next_label, type="primary", on_click=go_next)
+        st.button("Next →", type="primary", on_click=go_next)
 
 
 # -----------------------
-# Step 5 of 5 — Contact info (only if willing_contact)
-
-
+# Step 5 of 5 — Optional feedback + Submit
 # -----------------------
 elif st.session_state.step == 5:
-    st.header("Step 5 of 5 — Contact information (optional)")
+    st.header("Step 5 of 5 — Optional feedback")
 
-    if not st.session_state.willing_contact:
-        st.info("You did not indicate you’re open to being contacted. You can submit now.")
-    else:
-        st.caption("Provide contact details only if you’re comfortable being contacted about your testimonial.")
-        st.session_state.contact_name = st.text_input(
-            "Name (optional)",
-            value=st.session_state.contact_name,
-        )
-        st.session_state.contact_email = st.text_input(
-            "Email (optional)",
-            value=st.session_state.contact_email,
-        )
+    st.caption(
+        "This question is optional, but extremely helpful. If you have ideas to improve the course structure, processes, systems, or curriculum, please share them below."
+    )
+
+    st.session_state.improve_feedback = st.text_area(
+        "Any suggestions to improve the course structure, processes, systems, or curriculum? (optional)",
+        value=st.session_state.improve_feedback,
+        height=160,
+    )
 
     cols = st.columns([1, 1, 6])
     with cols[0]:
@@ -467,10 +474,10 @@ elif st.session_state.step == 5:
             st.error("Missing current-frequency answers.")
             st.stop()
 
-        # Recompute
+        # Recompute (used for back-end reporting)
         freq_num, chg_num, overall, overall_desc, avg_change, growth = compute_scores()
 
-        # Fill change values for NA items as blank
+        # Ensure change answers exist for all non-NA items
         non_na_ids = [qid for qid, _, _ in ITEMS if freq_num.get(qid) is not None]
         missing_chg = required_missing_change(non_na_ids)
         if non_na_ids and missing_chg:
