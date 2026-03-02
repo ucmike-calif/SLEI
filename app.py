@@ -109,6 +109,24 @@ def init_state():
         st.session_state.chg_sel = {}
     if "meta" not in st.session_state:
         st.session_state.meta = {}
+    # Used to clear widget keys so nothing is pre-selected on a fresh respondent
+    if "just_reset" not in st.session_state:
+        st.session_state.just_reset = True
+
+
+def clear_widget_keys():
+    """Remove widget keys so Streamlit doesn't carry forward prior selections."""
+    prefixes = ("freq_", "chg_")
+    exact = {
+        "wants_testimonial",
+        "testimonial_text",
+        "testimonial_ok_public",
+        "testimonial_attrib",
+        "testimonial_name",
+    }
+    for k in list(st.session_state.keys()):
+        if k in exact or k.startswith(prefixes):
+            del st.session_state[k]
 
 
 # -----------------
@@ -124,20 +142,35 @@ st.caption(
 )
 
 st.markdown(
-    "**Instructions**
+    """
+**What this is for**
+
+This brief post-course self-assessment helps you reflect on your growth and helps us improve the program over time. 
+Aggregate (group-level) results may also be shared with sponsoring organizations to demonstrate impact.
+
+**How to complete it**
+
+You’ll answer the same set of leadership behaviors in two sections:
+- Current frequency: how often you do each behavior now
+- Change: how your current frequency compares to before the course (only for behaviors that apply to your chosen role)
+
+Choose one leadership role as your reference point for the entire assessment. If a behavior isn’t relevant to that role, select Not applicable.
+"""
+)
+ results may also be shared with sponsoring organizations to demonstrate impact.
 
 "
-    "Complete this assessment using **one** leadership role as your reference point.
+    "**How to complete it**
 
 "
-    "You’ll answer in two short sections:
+    "You’ll answer the same set of leadership behaviors in **two sections**:
 "
-    "1) **Current frequency** (how you operate now)
+    "- **Current frequency**: how often you do each behavior *now*
 "
-    "2) **Change compared to before the course** (only for items that apply to your role)
+    "- **Change**: how your current frequency compares to *before* the course (only for behaviors that apply to your chosen role)
 
 "
-    "If a behavior is not relevant to your selected role, choose **Not applicable** — the related change question will be hidden."
+    "Choose **one** leadership role as your reference point for the entire assessment. If a behavior isn’t relevant to that role, select **Not applicable**."
 )
 
 # -----------------
@@ -145,6 +178,10 @@ st.markdown(
 # -----------------
 
 if st.session_state.step == 1:
+    # Clear any prior widget state so radios/selectors do not pre-populate.
+    if st.session_state.just_reset:
+        clear_widget_keys()
+        st.session_state.just_reset = False
     with st.form("slei_step1"):
         st.subheader("Step 1 of 2 — Context")
 
@@ -402,6 +439,7 @@ if st.session_state.step == 2:
             st.session_state.freq_sel = {}
             st.session_state.chg_sel = {}
             st.session_state.meta = {}
+            st.session_state.just_reset = True
 
         except Exception as e:
             st.error("Could not save to Google Sheets.")
