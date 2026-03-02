@@ -124,6 +124,7 @@ def clear_widget_keys():
         "role_anchor",
         "role_other",
         "profession",
+        "profession_other",
         "years",
         "scope",
         "wants_testimonial",
@@ -201,13 +202,20 @@ if st.session_state.step == 1:
         if role_anchor == "Other":
             role_other = st.text_input("If Other, specify (required)", key="role_other").strip()
 
-        profession = st.selectbox(
+                profession = st.selectbox(
             "Profession type (required)",
             ["Student", "Resident", "Pharmacy Technician", "Pharmacist", "Other"],
             index=None,
             placeholder="Select one…",
             key="profession",
         )
+
+        profession_other = ""
+        if profession == "Other":
+            profession_other = st.text_input(
+                "If Other, specify (required)",
+                key="profession_other",
+            ).strip()
 
         years = st.selectbox(
             "Years of experience (required)",
@@ -249,10 +257,11 @@ if st.session_state.step == 1:
     if next_btn:
         # Required context validation
         role_final = role_other if role_anchor == "Other" else role_anchor
+        profession_final = profession_other if profession == "Other" else profession
         missing = []
         for name, val in [
             ("Role anchor", role_final),
-            ("Profession type", profession),
+            ("Profession type", profession_final),
             ("Years of experience", years),
             ("Leadership scope", scope),
         ]:
@@ -275,7 +284,7 @@ if st.session_state.step == 1:
 
         st.session_state.meta = {
             "role_anchor": role_final,
-            "profession": profession,
+            "profession": profession_final,
             "years": years,
             "scope": scope,
         }
