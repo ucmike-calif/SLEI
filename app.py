@@ -353,28 +353,30 @@ elif st.session_state.step == 4:
     freq_num, chg_num, overall, overall_desc, avg_change, growth = compute_scores()
 
     st.markdown(f"**Overall score (current frequency):** {overall} / 5 — {overall_desc}")
-st.caption(
-    "This isn’t a grade. It’s a snapshot of how consistently these leadership behaviors show up in your day-to-day application."
-)
-
-st.markdown("**How to interpret your current score:**")
-st.markdown("- **Consistently / Automatic (4.5–5.0):** behaviors are reliable defaults, even under pressure.")
-st.markdown("- **Often (4.0–4.4):** behaviors show up most of the time; a solid strength.")
-st.markdown("- **Sometimes (3.0–3.9):** behaviors are present but inconsistent; strong opportunity for reinforcement.")
-st.markdown("- **Inconsistent (2.0–2.9):** behaviors show up occasionally; may require clearer systems or support.")
-st.markdown("- **Rarely (≤1.9):** behaviors are not yet habitual; focus on small, repeatable practice.")
-
-if avg_change is not None:
-    st.markdown(f"**Average change in application (vs. before the course):** {round1(avg_change)} on a -2 to +2 scale")
     st.caption(
-        "This reflects how your *application of these behaviors* has shifted over time, not your potential."
+        "This isn’t a grade. It’s a snapshot of how consistently these leadership behaviors show up in your day-to-day application."
     )
-    st.markdown("**Change scale reference:**")
-    st.markdown("- **-2:** Much less often applying the behaviors")
-    st.markdown("- **-1:** Slightly less often applying the behaviors")
-    st.markdown("- **0:** About the same level of application")
-    st.markdown("- **+1:** Slightly more often applying the behaviors")
-    st.markdown("- **+2:** Much more often applying the behaviors")
+
+    st.markdown("**How to interpret your current score:**")
+    st.markdown("- **Consistently / Automatic (4.5–5.0):** behaviors are reliable defaults, even under pressure.")
+    st.markdown("- **Often (4.0–4.4):** behaviors show up most of the time; a solid strength.")
+    st.markdown("- **Sometimes (3.0–3.9):** behaviors are present but inconsistent; strong opportunity for reinforcement.")
+    st.markdown("- **Inconsistent (2.0–2.9):** behaviors show up occasionally; may require clearer systems or support.")
+    st.markdown("- **Rarely (≤1.9):** behaviors are not yet habitual; focus on small, repeatable practice.")
+
+    if avg_change is not None:
+        st.markdown(
+            f"**Average change in application (vs. before the course):** {round1(avg_change)} on a -2 to +2 scale"
+        )
+        st.caption(
+            "This reflects how your *application of these behaviors* has shifted over time, not your potential."
+        )
+        st.markdown("**Change scale reference:**")
+        st.markdown("- **-2:** Much less often applying the behaviors")
+        st.markdown("- **-1:** Slightly less often applying the behaviors")
+        st.markdown("- **0:** About the same level of application")
+        st.markdown("- **+1:** Slightly more often applying the behaviors")
+        st.markdown("- **+2:** Much more often applying the behaviors")
 
     st.session_state.improve_feedback = st.text_area(
         "Any suggestions to improve the course structure, processes, systems, or curriculum? (optional)",
@@ -382,7 +384,6 @@ if avg_change is not None:
         height=140,
     )
 
-    # Testimonial section (no growth note in header)
     st.markdown("---")
     st.subheader("Testimonial")
     st.caption(
@@ -390,7 +391,6 @@ if avg_change is not None:
         "and what you’d say to someone considering the program."
     )
 
-    # Show testimonial text area (still only when growth is positive)
     if growth:
         st.session_state.testimonial = st.text_area(
             "If you’d like, share a short testimonial or comment about the program (optional)",
@@ -398,13 +398,11 @@ if avg_change is not None:
             height=140,
         )
 
-        # Ask contact permission AFTER testimonial
         st.session_state.willing_contact = st.checkbox(
             "I’m open to being contacted about using my feedback/testimonial (optional)",
             value=st.session_state.willing_contact,
         )
     else:
-        # Reset testimonial fields if not eligible
         st.session_state.willing_contact = False
         st.session_state.testimonial = ""
 
@@ -419,6 +417,7 @@ if avg_change is not None:
 
 # -----------------------
 # Step 5 of 5 — Contact info (only if willing_contact)
+
 
 # -----------------------
 elif st.session_state.step == 5:
