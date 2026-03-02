@@ -51,12 +51,15 @@ CHANGE_MAP = {
     "Much more often": 2,
 }
 
+
 def safe_mean(vals):
     vals = [v for v in vals if isinstance(v, (int, float))]
     return sum(vals) / len(vals) if vals else None
 
+
 def round1(x):
     return None if x is None else round(x, 1)
+
 
 def overall_descriptor(score):
     if score is None:
@@ -71,18 +74,21 @@ def overall_descriptor(score):
         return "Inconsistent"
     return "Rarely"
 
+
 def open_sheet():
     creds_info = st.secrets["gcp_service_account"]
     scopes = [
         "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive"
+        "https://www.googleapis.com/auth/drive",
     ]
     creds = Credentials.from_service_account_info(creds_info, scopes=scopes)
     gc = gspread.authorize(creds)
     return gc.open(st.secrets["sheet_name"]).worksheet(st.secrets["worksheet_name"])
 
+
 def append_row_to_sheet(ws, row):
     ws.append_row(row, value_input_option="RAW")
+
 
 # --- UI ---
 st.set_page_config(page_title="SLEI v2.0", layout="wide")
@@ -143,13 +149,23 @@ with st.form("slei_form"):
     st.subheader("Current frequency")
     freq_sel = {}
     for qid, text, dom in ITEMS:
-        freq_sel[qid] = st.radio(f"Q{qid}. {text}", FREQ_OPTIONS, horizontal=True, key=f"freq_{qid}")
+        freq_sel[qid] = st.radio(
+            f"Q{qid}. {text}",
+            FREQ_OPTIONS,
+            horizontal=True,
+            key=f"freq_{qid}",
+        )
 
     st.subheader("Change compared to before the course")
     st.caption("If you selected “Not applicable” above for an item, choose “About the same” below.")
     chg_sel = {}
     for qid, text, dom in ITEMS:
-        chg_sel[qid] = st.radio(f"Q{qid}. {text}", CHANGE_OPTIONS, horizontal=True, key=f"chg_{qid}")
+        chg_sel[qid] = st.radio(
+            f"Q{qid}. {text}",
+            CHANGE_OPTIONS,
+            horizontal=True,
+            key=f"chg_{qid}",
+        )
 
     submitted = st.form_submit_button("Submit")
 
@@ -189,11 +205,13 @@ if submitted:
             scope,
             str(overall),
             overall_desc,
-        ] + [str(freq_num[qid]) if isinstance(freq_num[qid], (int, float)) else "" for qid in range(1, 17)] + [
-            str(chg_num[qid]) for qid in range(1, 17)
-        ]
+        ] + [
+            str(freq_num[qid]) if isinstance(freq_num[qid], (int, float)) else "" for qid in range(1, 17)
+        ] + [str(chg_num[qid]) for qid in range(1, 17)]
         append_row_to_sheet(ws, row)
         st.info("Saved to Google Sheets.")
     except Exception as e:
-        st.error("Could not save to Google Sheets (secrets / sheet setup may be missing or incomplete).")
+        st.error(
+            "Could not save to Google Sheets (secrets / sheet setup may be missing or incomplete)."
+        )
         st.exception(e)
