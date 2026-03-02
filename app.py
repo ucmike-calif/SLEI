@@ -101,20 +101,18 @@ st.set_page_config(page_title="SLEI v2.0", layout="wide")
 
 st.title("STAR Leadership Effectiveness Index (SLEI) – v2 Pilot")
 
-st.caption("Not a grade — a development tool.")
-
 st.markdown("""
 **Purpose**
 
-This assessment supports your reflection and helps us evaluate and improve the program.
+This assessment is designed to support your continued development and help us improve the program.
 
 **Structure**
 
-You will answer each leadership behavior in two sections:
-1. Current frequency (how often you do it now)
-2. Change (how that frequency compares to before the course)
+You will answer 16 questions about key leadership behaviors in two sections:
+1. Current frequency (how often you perform them now)
+2. Change in frequency (how that frequency compares to before the course)
 
-Select one leadership role and use it consistently throughout.
+Because leadership looks different across contexts, select one role and use it consistently so your responses are accurate and comparable.
 """)
 
 
