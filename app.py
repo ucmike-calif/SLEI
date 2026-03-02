@@ -94,7 +94,7 @@ def append_row_to_sheet(ws, row):
 st.set_page_config(page_title="SLEI v2.0", layout="wide")
 
 st.title("STAR Leadership Effectiveness Index (SLEI) – v2 Pilot")
-st.caption("This dashboard will be non-anonymous if you include identifying information (e.g., name/email).")
+st.caption("Your responses will be anonymous unless you choose to provide identifying information (e.g., name/email).")
 
 st.markdown(
     "**Instructions**\n\n"
