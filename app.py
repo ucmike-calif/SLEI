@@ -146,7 +146,7 @@ st.markdown(
 **What this is for**
 
 This brief post-course self-assessment helps you reflect on your growth and helps us improve the program over time. 
-Aggregate (group-level) results may also be shared with sponsoring organizations to demonstrate impact.
+Aggregate (group-level) Aggregate (group-level) results may also be shared with sponsoring organizations to demonstrate impact.
 
 **How to complete it**
 
