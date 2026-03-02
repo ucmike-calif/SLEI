@@ -345,16 +345,25 @@ elif st.session_state.step == 3:
 
 
 # -----------------------
-# Step 4 of 5 — Optional feedback (conditional testimonial)
+# Step 4 of 5 — Optional feedback
 # -----------------------
 elif st.session_state.step == 4:
     st.header("Step 4 of 5 — Optional feedback")
 
     freq_num, chg_num, overall, overall_desc, avg_change, growth = compute_scores()
 
-    st.write(f"**Overall score (current frequency)**: {overall} / 5 — {overall_desc}")
+    st.markdown(f"**Overall score (current frequency):** {overall} / 5 — {overall_desc}")
+    st.caption(
+        "This isn’t a grade. It’s a snapshot of how consistently these behaviors show up in your day-to-day. "
+        "‘Often’ is strong, and a 5 typically reflects situations where the behavior is almost automatic."
+    )
+
     if avg_change is not None:
-        st.write(f"**Average change (vs. before the course)**: {round1(avg_change)}")
+        st.markdown(f"**Average change (vs. before the course):** {round1(avg_change)}")
+        st.caption(
+            "This reflects direction, not perfection. Even small positive shifts are meaningful—especially when you’re "
+            "applying new habits under real constraints."
+        )
 
     st.session_state.improve_feedback = st.text_area(
         "Any suggestions to improve the course structure, processes, systems, or curriculum? (optional)",
@@ -362,17 +371,26 @@ elif st.session_state.step == 4:
         height=140,
     )
 
+    # Testimonial section (no growth note in header)
+    st.markdown("---")
+    st.subheader("Testimonial")
+    st.caption(
+        "If you’re willing, a helpful testimonial often includes: what changed for you, a concrete example, "
+        "and what you’d say to someone considering the program."
+    )
+
+    # Show testimonial text area (still only when growth is positive)
     if growth:
-        st.markdown("---")
-        st.subheader("Testimonial (only shown when your results indicate growth)")
-        st.session_state.willing_contact = st.checkbox(
-            "I’m open to being contacted about using my feedback/testimonial (optional)",
-            value=st.session_state.willing_contact,
-        )
         st.session_state.testimonial = st.text_area(
             "If you’d like, share a short testimonial or comment about the program (optional)",
             value=st.session_state.testimonial,
             height=140,
+        )
+
+        # Ask contact permission AFTER testimonial
+        st.session_state.willing_contact = st.checkbox(
+            "I’m open to being contacted about using my feedback/testimonial (optional)",
+            value=st.session_state.willing_contact,
         )
     else:
         # Reset testimonial fields if not eligible
@@ -383,7 +401,6 @@ elif st.session_state.step == 4:
     with cols[0]:
         st.button("← Back", on_click=go_prev)
 
-    # If they opted into contact (and are eligible), go to step 5; otherwise go straight to submit
     next_label = "Next →" if st.session_state.willing_contact else "Review & submit →"
     with cols[1]:
         st.button(next_label, type="primary", on_click=go_next)
@@ -391,6 +408,7 @@ elif st.session_state.step == 4:
 
 # -----------------------
 # Step 5 of 5 — Contact info (only if willing_contact)
+
 # -----------------------
 elif st.session_state.step == 5:
     st.header("Step 5 of 5 — Contact information (optional)")
