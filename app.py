@@ -4,11 +4,11 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 
+# -----------------------
+# App Config
+# -----------------------
 APP_VERSION = "SLEI-v2.0-pilot"
 
-# -----------------------
-# Assessment items
-# -----------------------
 ITEMS = [
     (1, "Pause long enough to respond thoughtfully in high-pressure situations", "Sight"),
     (2, "Take deliberate actions to influence long-term outcomes", "Sight"),
@@ -28,15 +28,14 @@ ITEMS = [
     (16, "Effectively influence stakeholders beyond your formal authority to move important work forward", "Results"),
 ]
 
-FREQ_OPTIONS = [
-    "Rarely",
-    "Occasionally",
-    "Sometimes",
-    "Often",
-    "Consistently",
-    "Not applicable to my role",
-]
+DOMAINS = {
+    "Sight": [1, 2, 3, 4],
+    "Tenacity": [5, 6, 7, 8],
+    "Ability": [9, 10, 11, 12],
+    "Results": [13, 14, 15, 16],
+}
 
+FREQ_OPTIONS = ["Rarely", "Occasionally", "Sometimes", "Often", "Consistently", "Not applicable to my role"]
 CHANGE_OPTIONS = [
     "Much less often",
     "Slightly less often",
@@ -67,9 +66,9 @@ CHANGE_MAP = {
 # Helpers
 # -----------------------
 
-def safe_mean(values):
-    nums = [v for v in values if isinstance(v, (int, float))]
-    return (sum(nums) / len(nums)) if nums else None
+def safe_mean(vals):
+    vals = [v for v in vals if isinstance(v, (int, float))]
+    return sum(vals) / len(vals) if vals else None
 
 
 def round1(x):
@@ -105,46 +104,10 @@ def append_row_to_sheet(ws, row):
     ws.append_row(row, value_input_option="RAW")
 
 
-def init_state():
-    if "step" not in st.session_state:
-        st.session_state.step = 1  # 1 = freq, 2 = change
-    if "meta" not in st.session_state:
-        st.session_state.meta = {}
-    if "freq_sel" not in st.session_state:
-        st.session_state.freq_sel = {}
-    if "chg_sel" not in st.session_state:
-        st.session_state.chg_sel = {}
-    if "just_reset" not in st.session_state:
-        st.session_state.just_reset = True
-
-
-def clear_widget_keys():
-    """Remove widget keys so nothing is pre-selected for the next respondent."""
-    prefixes = ("freq_", "chg_")
-    exact = {
-        "role_anchor",
-        "role_other",
-        "profession",
-        "profession_other",
-        "years",
-        "scope",
-        "wants_testimonial",
-        "testimonial_text",
-        "testimonial_ok_public",
-        "testimonial_attrib",
-        "testimonial_name",
-    }
-    for k in list(st.session_state.keys()):
-        if k in exact or k.startswith(prefixes):
-            del st.session_state[k]
-
-
-def reset_for_next():
-    st.session_state.step = 1
-    st.session_state.meta = {}
-    st.session_state.freq_sel = {}
-    st.session_state.chg_sel = {}
-    st.session_state.just_reset = True
+def require_text_if_other(selected_value: str | None, other_text: str, other_label: str):
+    if selected_value == "Other" and not other_text.strip():
+        return f"{other_label} (Other)"
+    return None
 
 
 # -----------------------
@@ -152,12 +115,6 @@ def reset_for_next():
 # -----------------------
 
 st.set_page_config(page_title="SLEI v2.0", layout="wide")
-init_state()
-
-# Clear any prior widget state at the start of a fresh respondent
-if st.session_state.step == 1 and st.session_state.just_reset:
-    clear_widget_keys()
-    st.session_state.just_reset = False
 
 st.title("STAR Leadership Effectiveness Index (SLEI) – v2 Pilot")
 
@@ -170,292 +127,284 @@ This assessment is designed to support your continued development and help us im
 **Structure**
 
 You will answer 16 questions about key leadership behaviors in two sections:
-1. **Current Frequency** – How often you intentionally demonstrate each behavior now, at the conclusion of the course.
-2. **Change in Frequency** – How your current approach compares to how you typically operated before the course.
+1. The Current Frequency section asks you to indicate how often you perform these behaviors now (after completing the course)
+2. The Change in Frequency section asks how your current frequency compares to the frequency before the course
 
 Because leadership looks different across contexts, select one role and use it consistently so your responses are accurate and comparable.
 """
 )
 
+# Session state
+if "step" not in st.session_state:
+    st.session_state.step = 1
+
+if "context" not in st.session_state:
+    st.session_state.context = {}
+
 
 # -----------------------
-# Step 1 — Context + Current Frequency
+# Step 1 — Context (NOT in a form, so conditional fields appear immediately)
 # -----------------------
 
 if st.session_state.step == 1:
-    with st.form("slei_step1"):
-        st.subheader("Step 1 of 2 — Context")
+    st.header("Step 1 of 2 — Context")
 
-        role_anchor = st.selectbox(
-            "Which single leadership role will you use as your reference point? (required)",
-            [
-                "My primary professional/employer role",
-                "A volunteer or board leadership role",
-                "A family or community leadership role",
-                "Other",
-            ],
-            index=None,
-            placeholder="Select one…",
-            key="role_anchor",
-        )
+    role_anchor = st.selectbox(
+        "Which single leadership role will you use as your reference point? (required)",
+        [
+            "My primary professional/employer role",
+            "A volunteer or board leadership role",
+            "A family or community leadership role",
+            "Other",
+        ],
+        index=None,
+        placeholder="Select one…",
+        key="role_anchor",
+    )
 
-        role_other = ""
-        if role_anchor == "Other":
-            role_other = st.text_input("If Other, specify (required)", key="role_other").strip()
+    role_anchor_other = ""
+    if role_anchor == "Other":
+        role_anchor_other = st.text_input("If Other, specify (required)", key="role_anchor_other").strip()
 
-        profession = st.selectbox(
-            "Profession type (required)",
-            ["Student", "Resident", "Pharmacy Technician", "Pharmacist", "Other"],
-            index=None,
-            placeholder="Select one…",
-            key="profession",
-        )
+    profession = st.selectbox(
+        "Profession type (required)",
+        ["Student", "Resident", "Pharmacy Technician", "Pharmacist", "Other"],
+        index=None,
+        placeholder="Select one…",
+        key="profession",
+    )
 
-        profession_other = ""
-        if profession == "Other":
-            profession_other = st.text_input(
-                "If Other, specify (required)",
-                key="profession_other",
-            ).strip()
+    profession_other = ""
+    if profession == "Other":
+        profession_other = st.text_input("If Other, specify (required)", key="profession_other").strip()
 
-        years = st.selectbox(
-            "Years of experience (required)",
-            ["0–2", "3–5", "6–10", "11–15", "16–20", "21+"],
-            index=None,
-            placeholder="Select one…",
-            key="years",
-        )
+    years = st.selectbox(
+        "Years of experience (required)",
+        ["0–2", "3–5", "6–10", "11–15", "16–20", "21+"],
+        index=None,
+        placeholder="Select one…",
+        key="years",
+    )
 
-        scope = st.selectbox(
-            "Leadership scope (required)",
-            [
-                "Individual contributor (no direct reports)",
-                "Supervisor / Manager of individuals",
-                "Manager of managers",
-                "Senior leader / executive",
-                "Other",
-            ],
-            index=None,
-            placeholder="Select one…",
-            key="scope",
-        )
+    scope = st.selectbox(
+        "Leadership scope (required)",
+        [
+            "Individual contributor (no direct reports)",
+            "Supervisor / Manager of individuals",
+            "Manager of managers",
+            "Senior leader / executive",
+            "Other",
+        ],
+        index=None,
+        placeholder="Select one…",
+        key="scope",
+    )
 
-        st.subheader("Step 1 of 2 — Current Frequency")
-        st.caption("No answers are pre-selected. Please choose one option per item.")
+    scope_other = ""
+    if scope == "Other":
+        scope_other = st.text_input("If Other, specify (required)", key="scope_other").strip()
+
+    st.caption("You can proceed once all required fields are complete.")
+
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        next_clicked = st.button("Next →")
+
+    if next_clicked:
+        missing = []
+
+        # Required base fields
+        if role_anchor is None:
+            missing.append("Leadership role")
+        if profession is None:
+            missing.append("Profession type")
+        if years is None:
+            missing.append("Years of experience")
+        if scope is None:
+            missing.append("Leadership scope")
+
+        # Required other-text fields
+        other_missing = [
+            require_text_if_other(role_anchor, role_anchor_other, "Leadership role"),
+            require_text_if_other(profession, profession_other, "Profession type"),
+            require_text_if_other(scope, scope_other, "Leadership scope"),
+        ]
+        missing.extend([m for m in other_missing if m])
+
+        if missing:
+            st.error("Missing required fields: " + ", ".join(missing))
+        else:
+            # Normalize stored values
+            role_value = role_anchor_other if role_anchor == "Other" else role_anchor
+            prof_value = profession_other if profession == "Other" else profession
+            scope_value = scope_other if scope == "Other" else scope
+
+            st.session_state.context = {
+                "role_anchor": role_value,
+                "profession": prof_value,
+                "years": years,
+                "scope": scope_value,
+            }
+            st.session_state.step = 2
+            st.rerun()
+
+
+# -----------------------
+# Step 2 — Assessment + Optional Feedback
+# -----------------------
+
+if st.session_state.step == 2:
+    st.header("Step 2 of 2 — Assessment")
+
+    with st.form("slei_form_step2"):
+        st.subheader("Current frequency")
+        st.caption("Leave items blank if you’re unsure. Use ‘Not applicable’ only when the behavior truly does not apply to your selected role.")
 
         freq_sel = {}
         for qid, text, _dom in ITEMS:
             freq_sel[qid] = st.radio(
                 f"Q{qid}. {text}",
                 FREQ_OPTIONS,
-                horizontal=True,
                 index=None,
+                horizontal=True,
                 key=f"freq_{qid}",
             )
 
-        next_btn = st.form_submit_button("Next: Change questions")
+        applicable_qids = [qid for qid, _t, _d in ITEMS if freq_sel.get(qid) not in (None, "Not applicable to my role")]
+        na_qids = [qid for qid, _t, _d in ITEMS if freq_sel.get(qid) == "Not applicable to my role"]
 
-    if next_btn:
-        role_final = role_other if role_anchor == "Other" else role_anchor
-        profession_final = profession_other if profession == "Other" else profession
-
-        missing = []
-        for name, val in [
-            ("Role anchor", role_final),
-            ("Profession type", profession_final),
-            ("Years of experience", years),
-            ("Leadership scope", scope),
-        ]:
-            if val is None or (isinstance(val, str) and val.strip() == ""):
-                missing.append(name)
-
-        unanswered = [qid for qid, _t, _d in ITEMS if freq_sel.get(qid) is None]
-
-        if missing:
-            st.error("Missing required fields: " + ", ".join(missing))
-            st.stop()
-
-        if unanswered:
-            st.error(
-                "Please answer all Current Frequency items (missing: "
-                + ", ".join([str(q) for q in unanswered])
-                + ")."
-            )
-            st.stop()
-
-        st.session_state.meta = {
-            "role_anchor": role_final,
-            "profession": profession_final,
-            "years": years,
-            "scope": scope,
-        }
-        st.session_state.freq_sel = freq_sel
-        st.session_state.step = 2
-        st.rerun()
-
-
-# -----------------------
-# Step 2 — Change Compared to Before Course
-# -----------------------
-
-if st.session_state.step == 2:
-    freq_sel = st.session_state.freq_sel
-
-    # Only include items that were NOT marked N/A in Step 1
-    applicable_qids = [
-        qid for qid, _t, _d in ITEMS if FREQ_MAP.get(freq_sel.get(qid)) is not None
-    ]
-
-    with st.form("slei_step2"):
-        st.subheader("Step 2 of 2 — Change in Frequency")
-        st.caption("Only behaviors marked applicable in Step 1 are shown below.")
+        st.subheader("Change in frequency")
+        st.caption("You’ll only see change questions for items you did not mark as ‘Not applicable.’")
 
         chg_sel = {}
         for qid, text, _dom in ITEMS:
-            if qid not in applicable_qids:
-                continue
-            chg_sel[qid] = st.radio(
-                f"Q{qid}. {text}",
-                CHANGE_OPTIONS,
-                horizontal=True,
-                index=None,
-                key=f"chg_{qid}",
-            )
+            if qid in applicable_qids:
+                chg_sel[qid] = st.radio(
+                    f"Q{qid}. {text}",
+                    CHANGE_OPTIONS,
+                    index=None,
+                    horizontal=True,
+                    key=f"chg_{qid}",
+                )
+            else:
+                chg_sel[qid] = None
+
+        st.subheader("Optional feedback")
+        st.caption("This section is optional, but extremely helpful.")
+
+        testimonial_ok = st.checkbox(
+            "I’m open to being contacted about using my feedback/testimonial (optional)",
+            value=False,
+            key="testimonial_ok",
+        )
+
+        testimonial_text = st.text_area(
+            "If you’d like, share a short testimonial or comment about the program (optional)",
+            value="",
+            height=120,
+            key="testimonial_text",
+        )
+
+        contact_name = ""
+        contact_email = ""
+        if testimonial_ok:
+            c1, c2 = st.columns(2)
+            with c1:
+                contact_name = st.text_input("Name (optional)", value="", key="contact_name").strip()
+            with c2:
+                contact_email = st.text_input("Email (optional)", value="", key="contact_email").strip()
 
         submitted = st.form_submit_button("Submit")
 
     if submitted:
-        unanswered = [qid for qid in applicable_qids if chg_sel.get(qid) is None]
-        if unanswered:
-            st.error(
-                "Please answer all Change items shown (missing: "
-                + ", ".join([str(q) for q in unanswered])
-                + ")."
-            )
+        # Validate Step 2 required inputs: require frequency for all 16, and change for all applicable
+        missing = []
+
+        # Frequency must be answered for all 16 (including N/A when appropriate)
+        for qid, _text, _dom in ITEMS:
+            if freq_sel.get(qid) is None:
+                missing.append(f"Q{qid} (Current frequency)")
+
+        # Change must be answered for applicable items
+        for qid in applicable_qids:
+            if chg_sel.get(qid) is None:
+                missing.append(f"Q{qid} (Change)")
+
+        if missing:
+            st.error("Please complete: " + "; ".join(missing))
             st.stop()
 
-        # Convert to numeric
-        freq_num = {qid: FREQ_MAP[freq_sel[qid]] for qid, _t, _d in ITEMS}
-        chg_num = {qid: None for qid, _t, _d in ITEMS}
-        for qid in applicable_qids:
-            chg_num[qid] = CHANGE_MAP[chg_sel[qid]]
+        # Compute scores
+        freq_num = {qid: FREQ_MAP[freq_sel[qid]] for qid, _, _ in ITEMS}
+        chg_num = {qid: (CHANGE_MAP[chg_sel[qid]] if chg_sel[qid] is not None else None) for qid, _, _ in ITEMS}
 
-        overall = round1(safe_mean(freq_num.values()))
+        freq_vals = [v for v in freq_num.values() if isinstance(v, (int, float))]
+        overall = round1(safe_mean(freq_vals))
         overall_desc = overall_descriptor(overall)
-
-        increased_count = sum(1 for qid in applicable_qids if (chg_num[qid] or 0) > 0)
-        decreased_count = sum(1 for qid in applicable_qids if (chg_num[qid] or 0) < 0)
 
         st.success("Submitted.")
         st.write(f"**Overall score**: {overall} / 5 — {overall_desc}")
-        st.write(
-            f"**Growth summary**: Increased in **{increased_count}** behaviors (decreased in {decreased_count})."
-        )
 
-        # -----------------
-        # Dynamic testimonial section (gated)
-        # -----------------
-        testimonial_text = ""
-        testimonial_ok_public = ""
-        testimonial_attrib = ""
-        testimonial_name = ""
-
-        if increased_count >= 6:
-            st.divider()
-            st.subheader("Optional: Share a short testimonial")
-            st.caption(
-                "We only ask this when your responses suggest meaningful growth. "
-                "A testimonial is optional, and you can choose whether it’s anonymous."
-            )
-
-            wants_testimonial = st.radio(
-                "Would you like to share a brief testimonial about the value of the program?",
-                ["No", "Yes"],
-                index=None,
-                horizontal=True,
-                key="wants_testimonial",
-            )
-
-            if wants_testimonial == "Yes":
-                testimonial_text = st.text_area(
-                    "Your testimonial (1–3 sentences is great)",
-                    value="",
-                    placeholder="Example: The course helped me...",
-                    key="testimonial_text",
-                ).strip()
-
-                if testimonial_text:
-                    testimonial_ok_public = st.radio(
-                        "May we use this testimonial in marketing materials?",
-                        ["No", "Yes"],
-                        index=None,
-                        horizontal=True,
-                        key="testimonial_ok_public",
-                    )
-
-                    if testimonial_ok_public == "Yes":
-                        st.caption(
-                            "Choosing to attach your name makes your responses non-anonymous. "
-                            "If you prefer, select Anonymous."
-                        )
-                        testimonial_attrib = st.radio(
-                            "Attribution preference:",
-                            ["Anonymous", "Use my initials", "Use my name"],
-                            index=None,
-                            horizontal=True,
-                            key="testimonial_attrib",
-                        )
-
-                        if testimonial_attrib in ("Use my initials", "Use my name"):
-                            label = (
-                                "Enter your initials"
-                                if testimonial_attrib == "Use my initials"
-                                else "Enter your name"
-                            )
-                            testimonial_name = st.text_input(
-                                label, value="", key="testimonial_name"
-                            ).strip()
-
-        # -----------------
-        # Persist to Sheets
-        # -----------------
+        # Save to Google Sheets
         try:
             ws = open_sheet()
-            meta = st.session_state.meta
 
+            ctx = st.session_state.context
             row = [
                 pd.Timestamp.utcnow().isoformat(),
                 APP_VERSION,
-                meta.get("role_anchor", ""),
-                meta.get("profession", ""),
-                meta.get("years", ""),
-                meta.get("scope", ""),
+                ctx.get("role_anchor", ""),
+                ctx.get("profession", ""),
+                ctx.get("years", ""),
+                ctx.get("scope", ""),
                 str(overall) if overall is not None else "",
                 overall_desc,
-                str(increased_count),
-                str(decreased_count),
-                testimonial_text,
-                testimonial_ok_public,
-                testimonial_attrib,
-                testimonial_name,
             ]
 
-            # Always export 16 freq + 16 change columns in Q order
+            # Fixed 16 freq columns
             row += [
                 str(freq_num[qid]) if isinstance(freq_num[qid], (int, float)) else ""
                 for qid in range(1, 17)
             ]
+
+            # Fixed 16 change columns (blank for N/A)
             row += [
                 str(chg_num[qid]) if isinstance(chg_num[qid], (int, float)) else ""
                 for qid in range(1, 17)
             ]
 
+            # Optional feedback fields (fixed columns)
+            row += [
+                "YES" if testimonial_ok else "",
+                testimonial_text.strip(),
+                contact_name,
+                contact_email,
+            ]
+
             append_row_to_sheet(ws, row)
             st.info("Saved to Google Sheets.")
-
-            # Prepare clean slate for next respondent
-            reset_for_next()
-
         except Exception as e:
-            st.error("Could not save to Google Sheets.")
+            st.error("Could not save to Google Sheets (secrets / sheet setup may be missing or incomplete).")
             st.exception(e)
+
+        # Reset for next respondent
+        st.session_state.step = 1
+        st.session_state.context = {}
+        # Also clear widget state keys for radios/selects to avoid any persistence
+        for k in list(st.session_state.keys()):
+            if k.startswith("freq_") or k.startswith("chg_") or k in {
+                "role_anchor",
+                "role_anchor_other",
+                "profession",
+                "profession_other",
+                "years",
+                "scope",
+                "scope_other",
+                "testimonial_ok",
+                "testimonial_text",
+                "contact_name",
+                "contact_email",
+            }:
+                del st.session_state[k]
+
+        st.rerun()
