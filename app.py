@@ -137,16 +137,12 @@ st.set_page_config(page_title="SLEI v2.0", layout="wide")
 init_state()
 
 st.title("STAR Leadership Effectiveness Index (SLEI) – v2 Pilot")
-st.caption(
-    "Not a grade — a development tool. Your responses support your reflection and our quality improvement."
-)
+st.caption("Not a grade — a development tool. Your responses support reflection and program improvement.")
 
-st.markdown(
-    """
+st.markdown("""
 **What this is for**
 
-This brief post-course self-assessment helps you reflect on your growth and helps us improve the program over time. 
-Aggregate (group-level) Aggregate (group-level) results may also be shared with sponsoring organizations to demonstrate impact.
+This brief post-course self-assessment helps you reflect on your growth and helps us improve the program over time. Aggregate (group-level) results may also be shared with sponsoring organizations to demonstrate impact.
 
 **How to complete it**
 
@@ -155,8 +151,7 @@ You’ll answer the same set of leadership behaviors in two sections:
 - Change: how your current frequency compares to before the course (only for behaviors that apply to your chosen role)
 
 Choose one leadership role as your reference point for the entire assessment. If a behavior isn’t relevant to that role, select Not applicable.
-"""
-)
+""")
  results may also be shared with sponsoring organizations to demonstrate impact.
 
 "
