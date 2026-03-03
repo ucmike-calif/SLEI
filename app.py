@@ -118,18 +118,10 @@ def growth_interpretation(avg_change):
 
 
 def format_top_items(items):
-    """Format top-items list for dashboard text blocks.
-
-    items: list of tuples like (metric_value, qid, text, domain)
-    Returns a bullet list string.
-    """
+    """items: list of tuples like (metric_value, qid, text, domain)."""
     if not items:
         return ""
-
-    lines = []
-    for _val, qid, text, _dom in items:
-        lines.append(f"• Q{qid}: {text}")
-
+    lines = [f"• Q{qid}: {text}" for _val, qid, text, _dom in items]
     return "\n".join(lines)
 
 
@@ -176,67 +168,50 @@ def generate_report_code(ts: datetime, role_anchor: str, profession: str):
     return hashlib.sha1(base.encode("utf-8")).hexdigest()[:8].upper()
 
 
-def replace_tokens_in_ppt(prs: Presentation, token_map: dict[str, str]) -> None:
-    """Replace {{TOKEN}} placeholders across the deck.
+def replace_tokens_in_ppt(prs: Presentation, token_map: dict) -> None:
+    """Replace {{TOKEN}} strings throughout the presentation.
 
-    Robust to tokens being split across multiple runs.
-    Any leftover {{...}} is blanked so participants never see raw tokens.
+    Implementation detail:
+    - We do NOT touch font colors/styles (theme/auto colors can raise on `.rgb`).
+    - We replace at the PARAGRAPH level first (handles tokens split across runs).
+      This may simplify formatting for that paragraph, but our tokenized template
+      uses consistent styling within each token area.
+    - If no paragraph-level match, we fall back to run-level replacement.
     """
-    token_keys = list(token_map.keys())
+    if not token_map:
+        return
 
-    def apply(text: str) -> str:
-        if not text:
-            return text
-        for k in token_keys:
-            if k in text:
-                text = text.replace(k, token_map[k])
-        # Safety: remove any remaining tokens
-        return re.sub(r"\{\{[^}]+\}\}", "", text)
+    keys = list(token_map.keys())
 
     for slide in prs.slides:
         for shape in slide.shapes:
             if not getattr(shape, "has_text_frame", False):
                 continue
-
             tf = shape.text_frame
             for p in tf.paragraphs:
-                # Capture original text across runs
-                original = "".join(r.text for r in p.runs) if p.runs else p.text
-                replaced = apply(original)
-                if replaced == original:
+                # Paragraph-level replacement (handles tokens split across runs)
+                try:
+                    ptxt = p.text or ""
+                except Exception:
+                    ptxt = ""
+
+                if ptxt and any(k in ptxt for k in keys):
+                    for k, v in token_map.items():
+                        ptxt = ptxt.replace(k, v)
+                    # Setting paragraph text will reset runs for that paragraph.
+                    p.text = ptxt
                     continue
 
-                # Preserve paragraph alignment
-                alignment = p.alignment
-
-                # Best-effort: preserve first run styling
-                size = bold = italic = name = color = None
-                if p.runs:
-                    f = p.runs[0].font
-                    size = f.size
-                    bold = f.bold
-                    italic = f.italic
-                    name = f.name
-                    if f.color and f.color.rgb:
-                        color = f.color.rgb
-
-                p.text = replaced
-                p.alignment = alignment
-
-                if p.runs:
-                    r0 = p.runs[0]
-                    if size is not None:
-                        r0.font.size = size
-                    if bold is not None:
-                        r0.font.bold = bold
-                    if italic is not None:
-                        r0.font.italic = italic
-                    if name is not None:
-                        r0.font.name = name
-                    if color is not None:
-                        r0.font.color.rgb = color
-
-
+                # Run-level replacement (keeps run formatting when tokens are inside single runs)
+                for r in p.runs:
+                    if not r.text:
+                        continue
+                    txt = r.text
+                    for k, v in token_map.items():
+                        if k in txt:
+                            txt = txt.replace(k, v)
+                    if txt != r.text:
+                        r.text = txt
 def build_dashboard_pptx_bytes(
     *,
     token_map: dict[str, str],
