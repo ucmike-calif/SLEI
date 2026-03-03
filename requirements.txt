@@ -2,5 +2,4 @@ streamlit
 gspread
 google-auth
 pandas
-reportlab
 python-pptx
