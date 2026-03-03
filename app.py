@@ -308,19 +308,21 @@ def growth_interpretation(avg_change):
 
 
 def format_top_items(items):
-    # items: list[(val, qid, text, dom)]
+    """Format top-items list for dashboard text blocks.
+
+    items: list of tuples like (metric_value, qid, text, domain)
+    Returns a bullet list string.
+    """
     if not items:
         return ""
+
     lines = []
-    for _, qid, text, _dom in items:
+    for _val, qid, text, _dom in items:
         lines.append(f"• Q{qid}: {text}")
-    return "
-".join(lines)""
-    lines = []
-    for _, qid, text, _dom in items:
-        lines.append(f"• Q{qid}: {text}")
+
     return "
 ".join(lines)
+
 
 
 def pick_strongest_domain_by_score(domain_scores: dict):
