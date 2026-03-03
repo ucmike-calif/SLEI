@@ -315,6 +315,11 @@ def format_top_items(items):
     for _, qid, text, _dom in items:
         lines.append(f"• Q{qid}: {text}")
     return "
+".join(lines)""
+    lines = []
+    for _, qid, text, _dom in items:
+        lines.append(f"• Q{qid}: {text}")
+    return "
 ".join(lines)
 
 
