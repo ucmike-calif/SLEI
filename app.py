@@ -8,6 +8,8 @@ import pandas as pd
 
 import gspread
 from google.oauth2.service_account import Credentials
+
+import uuid
 from pptx import Presentation
 
 # -----------------------
@@ -472,78 +474,72 @@ elif st.session_state.step == 3:
 # Step 4 of 5 — Feedback & testimonial
 # -----------------------
 elif st.session_state.step == 4:
-    st.header("Step 4 of 5 — Feedback")
+    st.header("Step 4 of 5 — Testimonial (optional)")
 
-    freq_num, chg_num, overall, overall_desc, avg_change, growth = compute_scores()
-
-    st.session_state.improve_feedback = st.text_area(
-        "Any suggestions to improve the course structure, processes, systems, or curriculum? (optional)",
-        value=st.session_state.improve_feedback,
-        height=140,
-    )
-
-    st.markdown("---")
-    st.subheader("Testimonial")
     st.caption(
-        "If you’re willing, a helpful testimonial often includes: what changed for you, a concrete example, and what you’d say to someone considering the program."
+        "This section is optional. If you choose to share a testimonial, it helps others understand the value of the program."
     )
 
-    if growth:
-        st.session_state.testimonial = st.text_area(
-            "If you’d like, share a short testimonial or comment about the program (optional)",
-            value=st.session_state.testimonial,
-            height=140,
-        )
-        st.session_state.willing_contact = st.checkbox(
-            "I’m open to being contacted about using my feedback/testimonial (optional)",
-            value=st.session_state.willing_contact,
-        )
-    else:
-        # Clear testimonial-related fields when not showing
-        st.session_state.testimonial = ""
-        st.session_state.willing_contact = False
+    st.markdown(
+        "**Guidance:** A helpful testimonial often includes (1) what changed for you, (2) one concrete example, and (3) what you’d say to someone considering the program."
+    )
 
-    cols = st.columns([1, 1, 7])
+    # We still compute growth for analytics/storage, but we do NOT show scoring here.
+    _, _, _, _, avg_change, growth = compute_scores()
+
+    # Always allow a testimonial (optional)
+    st.session_state.testimonial = st.text_area(
+        "If you’d like, share a short testimonial or comment about the program (optional)",
+        value=st.session_state.testimonial,
+        height=180,
+    )
+
+    # Ask contact permission AFTER the testimonial
+    st.session_state.willing_contact = st.checkbox(
+        "I’m open to being contacted about using my testimonial (optional)",
+        value=st.session_state.willing_contact,
+    )
+
+    cols = st.columns([1, 1, 6])
     with cols[0]:
         st.button("← Back", on_click=go_prev)
     with cols[1]:
         st.button("Next →", type="primary", on_click=go_next)
 
 
-# -----------------------
-# Step 5 of 5 — Submit + dashboard download
-# -----------------------
 elif st.session_state.step == 5:
-    st.header("Step 5 of 5 — Submit")
+    st.header("Step 5 of 5 — Optional feedback")
 
+    st.caption("This section is optional, but extremely helpful.")
+
+    st.session_state.improve_feedback = st.text_area(
+        "Any suggestions to improve the course structure, processes, systems, or curriculum? (optional)",
+        value=st.session_state.improve_feedback,
+        height=180,
+    )
+
+    # If they said they're open to being contacted, collect contact info here (optional)
     if st.session_state.willing_contact:
+        st.markdown("---")
+        st.subheader("Contact information (optional)")
         st.caption("Provide contact details only if you’re comfortable being contacted about your testimonial.")
-        st.session_state.contact_name = st.text_input("Name (optional)", value=st.session_state.contact_name)
-        st.session_state.contact_email = st.text_input("Email (optional)", value=st.session_state.contact_email)
+        st.session_state.contact_name = st.text_input(
+            "Name (optional)",
+            value=st.session_state.contact_name,
+        )
+        st.session_state.contact_email = st.text_input(
+            "Email (optional)",
+            value=st.session_state.contact_email,
+        )
 
-    cols = st.columns([1, 7])
+    cols = st.columns([1, 1, 6])
     with cols[0]:
+        st.button("← Back", on_click=go_prev)
+    with cols[1]:
         submitted = st.button("Submit", type="primary")
 
     if submitted:
-        # Safety checks
-        missing = required_missing_step1()
-        if missing:
-            st.error("Missing required fields: " + ", ".join(missing))
-            st.stop()
-        if required_missing_freq():
-            st.error("Missing current-frequency answers.")
-            st.stop()
-
-        # Recompute
-        freq_num, chg_num, overall, overall_desc, avg_change, growth = compute_scores()
-
-        non_na_ids = [qid for qid in range(1, 17) if isinstance(freq_num.get(qid), (int, float))]
-        if non_na_ids and required_missing_change(non_na_ids):
-            st.error("Missing change answers for one or more items shown.")
-            st.stop()
-
-        # Normalize "Other" fields
+        # Build final context values
         role_anchor = st.session_state.role_anchor
         if role_anchor == "Other":
             role_anchor = st.session_state.role_anchor_other.strip()
@@ -556,27 +552,32 @@ elif st.session_state.step == 5:
         if scope == "Other":
             scope = st.session_state.scope_other.strip()
 
-        # Generate dashboard ONCE per submit (cache in session_state to prevent duplicates on rerun)
-        if st.session_state.dashboard_bytes is None:
-            try:
-                mapping = build_dashboard_mapping(freq_num, chg_num, overall, overall_desc, avg_change)
-                pptx_bytes = generate_dashboard_pptx_bytes(mapping)
+        # Final required checks (should already be satisfied, but keep as safety)
+        missing = required_missing_step1()
+        if missing:
+            st.error("Missing required fields: " + ", ".join(missing))
+            st.stop()
 
-                st.session_state.dashboard_bytes = pptx_bytes
-                st.session_state.dashboard_generated_at = datetime.now(timezone.utc).isoformat()
+        missing_freq = required_missing_freq()
+        if missing_freq:
+            st.error("Missing current-frequency answers.")
+            st.stop()
 
-                # Use name only if provided (keeps most submissions anonymous)
-                safe_name = re.sub(r"[^A-Za-z0-9_-]+", "_", (st.session_state.contact_name or "").strip())
-                if not safe_name:
-                    safe_name = "SLEI_Dashboard"
-                st.session_state.dashboard_filename = f"{safe_name}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.pptx"
-            except Exception as e:
-                st.error("Dashboard could not be generated. The response can still be saved.")
-                st.exception(e)
+        # Recompute
+        freq_num, chg_num, overall, overall_desc, avg_change, growth = compute_scores()
 
-        # Save response to Google Sheets (including dashboard metadata if available)
+        # Fill change values for NA items as blank
+        non_na_ids = [qid for qid, _, _ in ITEMS if freq_num.get(qid) is not None]
+        missing_chg = required_missing_change(non_na_ids)
+        if non_na_ids and missing_chg:
+            st.error("Missing change answers for one or more items.")
+            st.stop()
+
+        # Save
         try:
             ws = open_sheet()
+
+            response_id = str(uuid.uuid4())
 
             row = [
                 pd.Timestamp.utcnow().isoformat(),
@@ -608,10 +609,10 @@ elif st.session_state.step == 5:
                 for qid in range(1, 17)
             ]
 
-            # New: dashboard metadata columns (must exist in sheet header)
+            # Dashboard metadata columns (filled later by the dashboard generator)
             row += [
-                st.session_state.dashboard_generated_at or "",
-                st.session_state.dashboard_filename or "",
+                "",  # dashboard_generated_at
+                "",  # dashboard_filename
             ]
 
             append_row_to_sheet(ws, row)
