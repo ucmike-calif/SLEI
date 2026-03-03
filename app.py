@@ -62,61 +62,28 @@ CHANGE_MAP = {
 # Token helpers for the dashboard PPTX template
 # (Keys are internal; values are the exact {{TOKENS}} present in the PPTX.)
 TOK = {
-    # Header / intro
-    "DASHBOARD_TITLE": "{{DASHBOARD_TITLE}}",
-    "DASHBOARD_SUBTITLE": "{{DASHBOARD_SUBTITLE}}",
-    "DASHBOARD_INTRO": "{{DASHBOARD_INTRO}}",
-
-    # KPI tiles
-
+    "TITLE": "{{DASHBOARD_TITLE}}",
+    "SUBTITLE": "{{DASHBOARD_SUBTITLE}}",
+    "INTRO": "{{DASHBOARD_INTRO}}",
+    "CONS_SCORE": "{{CONSISTENCY_SCORE}}",
+    "CONS_BAND": "{{CONSISTENCY_BAND}}",
     "CONS_INTERP": "{{CONSISTENCY_INTERPRETATION}}",
-
-    "GROWTH_SUMMARY": "{{GROWTH_SUMMARY}}",
-
-    "STRONGEST_DETAIL": "{{STRONGEST_DETAIL}}",
-
-    # Domain profile scores
-    "SIGHT_SCORE": "{{SIGHT_SCORE}}",
-    "TENACITY_SCORE": "{{TENACITY_SCORE}}",
-    "ABILITY_SCORE": "{{ABILITY_SCORE}}",
-    "RESULTS_SCORE": "{{RESULTS_SCORE}}",
-
-    # Strongest reported growth
-    "TOP_GROWTH_ITEM_1": "{{TOP_GROWTH_ITEM_1}}",
-    "TOP_GROWTH_ITEM_2": "{{TOP_GROWTH_ITEM_2}}",
-    "TOP_GROWTH_WHY": "{{TOP_GROWTH_WHY}}",
-    "TOP_GROWTH_PROMPT": "{{TOP_GROWTH_PROMPT}}",
-
-    # Opportunities for continued growth
-    "TOP_OPPORTUNITY_ITEM_1": "{{TOP_OPPORTUNITY_ITEM_1}}",
-    "TOP_OPPORTUNITY_ITEM_2": "{{TOP_OPPORTUNITY_ITEM_2}}",
-    "TOP_OPPORTUNITY_NEXTSTEP": "{{TOP_OPPORTUNITY_NEXTSTEP}}",
-
-    # Action plan
-    "ACTIONPLAN_PROMPT": "{{ACTIONPLAN_PROMPT}}",
-}
-
-    "CONS_INTERP": "{{CONSISTENCY_INTERPRETATION}}",
-
+    "GROWTH_AVG": "{{GROWTH_AVERAGE}}",
     "GROWTH_SUM": "{{GROWTH_SUMMARY}}",
-
+    "GROWTH_INTERP": "{{GROWTH_INTERPRETATION}}",
     "SIGHT": "{{SIGHT_SCORE}}",
     "TENACITY": "{{TENACITY_SCORE}}",
     "ABILITY": "{{ABILITY_SCORE}}",
     "RESULTS": "{{RESULTS_SCORE}}",
-
     "STRONGEST_GROWTH_DOM": "{{STRONGEST_GROWTH_DOMAIN}}",
     "STRONGEST_GROWTH_DETAIL": "{{STRONGEST_GROWTH_DETAIL}}",
-
     "TOP_GROWTH_1": "{{TOP_GROWTH_ITEM_1}}",
     "TOP_GROWTH_2": "{{TOP_GROWTH_ITEM_2}}",
     "TOP_GROWTH_WHY": "{{TOP_GROWTH_WHY}}",
     "TOP_GROWTH_PROMPT": "{{TOP_GROWTH_PROMPT}}",
-
     "TOP_OPP_1": "{{TOP_OPPORTUNITY_ITEM_1}}",
     "TOP_OPP_2": "{{TOP_OPPORTUNITY_ITEM_2}}",
     "TOP_OPP_NEXT": "{{TOP_OPPORTUNITY_NEXTSTEP}}",
-
     "ACTION_PROMPT": "{{ACTIONPLAN_PROMPT}}",
 }
 
@@ -135,7 +102,7 @@ def round1(x):
 
 def overall_descriptor(score):
     if score is None:
-        return "\n".join(lines)Not scored"
+        return "Not scored"
     if score >= 4.5:
         return "Consistently"
     if score >= 4.0:
@@ -441,11 +408,9 @@ st.markdown(SURVEY_CSS, unsafe_allow_html=True)
 st.title("STAR Leadership Effectiveness Index (SLEI) – v2 Pilot")
 
 st.markdown(
-    """**Purpose**  
-This assessment supports your continued development and helps us improve the program.
+    """**Purpose** This assessment supports your continued development and helps us improve the program.
 
-**Structure**  
-You’ll answer 16 questions about key leadership behaviors in two sections:
+**Structure** You’ll answer 16 questions about key leadership behaviors in two sections:
 1) **Current Frequency** — how often you apply each behavior now (after the course)
 2) **Change in Frequency** — how your current application compares to before the course
 
@@ -785,18 +750,10 @@ elif st.session_state.step == 5:
             opp_next = "Identify one upcoming situation to practice each behavior intentionally."
 
             action_prompt = (
-                "Complete this 60–90 day action plan (progress > perfection):
-
-"
-                "Primary behavior to strengthen (pick ONE): ________________________________
-
-"
-                "Situation to practice (next 60–90 days): _________________________________
-
-"
-                "What will success look like (observable): _________________________________
-
-"
+                "Complete this 60–90 day action plan (progress > perfection):\n\n"
+                "Primary behavior to strengthen (pick ONE): ________________________________\n\n"
+                "Situation to practice (next 60–90 days): _________________________________\n\n"
+                "What will success look like (observable): _________________________________\n\n"
                 "First next step (within 7 days): ________________________________________"
             )
 
@@ -915,23 +872,23 @@ elif st.session_state.step == 5:
                 st.exception(e)
                 st.stop()
 
-        # Download UI
-        if st.session_state.dashboard_bytes is not None:
-            st.success("Submitted. Your dashboard is ready to download.")
-            st.download_button(
-                "Download dashboard (PPTX)",
-                data=st.session_state.dashboard_bytes,
-                file_name=st.session_state.dashboard_filename or "SLEI_Dashboard.pptx",
-                mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-            )
+    # Download UI
+    if st.session_state.dashboard_bytes is not None:
+        st.success("Submitted. Your dashboard is ready to download.")
+        st.download_button(
+            "Download dashboard (PPTX)",
+            data=st.session_state.dashboard_bytes,
+            file_name=st.session_state.dashboard_filename or "SLEI_Dashboard.pptx",
+            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        )
 
-            st.caption(
-                "PDF export isn’t supported directly in Streamlit Cloud without a document-conversion service. "
-                "If you want PDF output later, we can add a separate conversion step (e.g., external service or offline batch conversion)."
-            )
+        st.caption(
+            "PDF export isn’t supported directly in Streamlit Cloud without a document-conversion service. "
+            "If you want PDF output later, we can add a separate conversion step (e.g., external service or offline batch conversion)."
+        )
 
-            # Reset the flow for the next respondent (but keep download available until refresh)
-            st.session_state.step = 1
+        # Reset the flow for the next respondent (but keep download available until refresh)
+        st.session_state.step = 1
 
 else:
     st.session_state.step = 1
