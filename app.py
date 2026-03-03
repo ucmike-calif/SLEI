@@ -118,12 +118,19 @@ def growth_interpretation(avg_change):
 
 
 def format_top_items(items):
-    """items: list of tuples like (metric_value, qid, text, domain)."""
+    """Format top-items list for dashboard text blocks.
+
+    items: list of tuples like (metric_value, qid, text, domain)
+    Returns a bullet list string.
+    """
     if not items:
         return ""
-    lines = [f"• Q{qid}: {text}" for _val, qid, text, _dom in items]
-    return "
-".join(lines)
+
+    lines = []
+    for _val, qid, text, _dom in items:
+        lines.append(f"• Q{qid}: {text}")
+
+    return "\n".join(lines)
 
 
 
