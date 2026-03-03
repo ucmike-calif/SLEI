@@ -59,46 +59,46 @@ CHANGE_MAP = {
 }
 
 # Dashboard token keys (must match {{TOKEN}} in template)
+# Token helpers for the dashboard PPTX template
+# (Keys are internal; values are the exact {{TOKENS}} present in the PPTX.)
 TOK = {
-    "TITLE": "{{DASHBOARD_TITLE}}",
-    "SUBTITLE": "{{DASHBOARD_SUBTITLE}}",
-    "INTRO": "{{DASHBOARD_INTRO}}",
+    # Header / intro
+    "DASHBOARD_TITLE": "{{DASHBOARD_TITLE}}",
+    "DASHBOARD_SUBTITLE": "{{DASHBOARD_SUBTITLE}}",
+    "DASHBOARD_INTRO": "{{DASHBOARD_INTRO}}",
 
-    "CONS_SCORE": "{{CONSISTENCY_SCORE}}",
-    "CONS_BAND": "{{CONSISTENCY_BAND}}",
+    # KPI tiles
+
     "CONS_INTERP": "{{CONSISTENCY_INTERPRETATION}}",
 
-    "GROWTH_AVG": "{{GROWTH_AVG}}",
-    "GROWTH_SUM": "{{GROWTH_SUMMARY}}",
-    "GROWTH_INTERP": "{{GROWTH_INTERPRETATION}}",
+    "GROWTH_SUMMARY": "{{GROWTH_SUMMARY}}",
 
-    "SIGHT": "{{SIGHT_SCORE}}",
-    "TENACITY": "{{TENACITY_SCORE}}",
-    "ABILITY": "{{ABILITY_SCORE}}",
-    "RESULTS": "{{RESULTS_SCORE}}",
+    "STRONGEST_DETAIL": "{{STRONGEST_DETAIL}}",
 
-    "STRONGEST_GROWTH_DOM": "{{STRONGEST_GROWTH_DOMAIN}}",
-    "STRONGEST_GROWTH_DETAIL": "{{STRONGEST_GROWTH_DETAIL}}",
+    # Domain profile scores
+    "SIGHT_SCORE": "{{SIGHT_SCORE}}",
+    "TENACITY_SCORE": "{{TENACITY_SCORE}}",
+    "ABILITY_SCORE": "{{ABILITY_SCORE}}",
+    "RESULTS_SCORE": "{{RESULTS_SCORE}}",
 
-    "TOP_GROWTH_1": "{{TOP_GROWTH_ITEM_1}}",
-    "TOP_GROWTH_2": "{{TOP_GROWTH_ITEM_2}}",
+    # Strongest reported growth
+    "TOP_GROWTH_ITEM_1": "{{TOP_GROWTH_ITEM_1}}",
+    "TOP_GROWTH_ITEM_2": "{{TOP_GROWTH_ITEM_2}}",
     "TOP_GROWTH_WHY": "{{TOP_GROWTH_WHY}}",
     "TOP_GROWTH_PROMPT": "{{TOP_GROWTH_PROMPT}}",
 
-    "TOP_OPP_1": "{{TOP_OPPORTUNITY_ITEM_1}}",
-    "TOP_OPP_2": "{{TOP_OPPORTUNITY_ITEM_2}}",
-    "TOP_OPP_NEXT": "{{TOP_OPPORTUNITY_NEXTSTEP}}",
+    # Opportunities for continued growth
+    "TOP_OPPORTUNITY_ITEM_1": "{{TOP_OPPORTUNITY_ITEM_1}}",
+    "TOP_OPPORTUNITY_ITEM_2": "{{TOP_OPPORTUNITY_ITEM_2}}",
+    "TOP_OPPORTUNITY_NEXTSTEP": "{{TOP_OPPORTUNITY_NEXTSTEP}}",
 
-    "ACTION_PROMPT": "{{ACTIONPLAN_PROMPT}}",
+    # Action plan
+    "ACTIONPLAN_PROMPT": "{{ACTIONPLAN_PROMPT}}",
 }
 
-    "CONS_SCORE": "{{CONSISTENCY_SCORE}}",
-    "CONS_BAND": "{{CONSISTENCY_BAND}}",
     "CONS_INTERP": "{{CONSISTENCY_INTERPRETATION}}",
 
-    "GROWTH_AVG": "{{GROWTH_AVG}}",
     "GROWTH_SUM": "{{GROWTH_SUMMARY}}",
-    "GROWTH_INTERP": "{{GROWTH_INTERPRETATION}}",
 
     "SIGHT": "{{SIGHT_SCORE}}",
     "TENACITY": "{{TENACITY_SCORE}}",
@@ -186,8 +186,7 @@ def format_bullets(q_items):
     lines = []
     for qid, text in q_items:
         lines.append(f"• Q{qid}: {text}")
-    return "
-".join(lines)
+    return "\n".join(lines)
 
 
 def open_sheet():
