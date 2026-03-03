@@ -376,60 +376,65 @@ elif st.session_state.step == 3:
 # Step 4 of 5 — Testimonial (optional)
 # -----------------------
 elif st.session_state.step == 4:
-    st.header("Step 4 of 5 — Testimonial (optional)")
+    st.header("Step 4 of 5 — Testimonial & feedback (optional)")
 
-    # We compute scores in the background for reporting/dashboard use,
-    # but we keep the survey experience focused and lightweight.
-    freq_num, chg_num, overall, overall_desc, avg_change, growth = compute_scores()
-
+    # Keep this step clean: no “grading” language, just optional sharing.
     st.caption(
-        "This section is optional. If you choose to share a testimonial, it helps others understand the value of the program."
+        "This step is optional. If you choose to share, it helps us improve the program and helps others understand its value."
     )
 
+    _, _, _, _, _, growth = compute_scores()
+
+    # --- Course improvement feedback ---
+    st.subheader("Optional feedback")
+    st.caption("If you have ideas to improve the course structure, process, systems, or curriculum, share them here.")
+    st.session_state.improve_feedback = st.text_area(
+        "Suggestions for improvement (optional)",
+        value=st.session_state.improve_feedback,
+        height=140,
+        placeholder="Example: More time for peer discussion, clearer prompts between sessions, a quick reference sheet, etc.",
+    )
+
+    # --- Testimonial (only when growth is positive) ---
+    st.markdown("---")
+    st.subheader("Testimonial")
+
     if growth:
-        st.markdown(
-            "**Guidance:** A helpful testimonial often includes (1) what changed for you, (2) one concrete example, "
-            "and (3) what you’d say to someone considering the program."
+        st.caption(
+            "If you’re willing, a helpful testimonial often includes: (1) what changed for you, (2) one concrete example, and (3) who you’d recommend the program to (and why)."
         )
 
         st.session_state.testimonial = st.text_area(
-            "If you’d like, share a short testimonial or comment about the program (optional)",
+            "Your testimonial (optional)",
             value=st.session_state.testimonial,
             height=160,
+            placeholder=(
+                "Example: Before the program I…, now I…. A concrete moment was…. "
+                "I’d recommend this to… because…."
+            ),
         )
 
+        # Ask contact permission AFTER they’ve written something (reduces friction)
         st.session_state.willing_contact = st.checkbox(
             "I’m open to being contacted about using my testimonial (optional)",
             value=st.session_state.willing_contact,
         )
-
-        if st.session_state.willing_contact:
-            st.session_state.contact_name = st.text_input(
-                "Name (optional)",
-                value=st.session_state.contact_name,
-            )
-            st.session_state.contact_email = st.text_input(
-                "Email (optional)",
-                value=st.session_state.contact_email,
-            )
     else:
-        # If no positive shift is indicated, we keep things simple and skip the testimonial section.
-        st.session_state.testimonial = ""
+        st.info(
+            "A testimonial prompt appears when your results indicate growth. You can still share improvement feedback above."
+        )
         st.session_state.willing_contact = False
-        st.session_state.contact_name = ""
-        st.session_state.contact_email = ""
-        st.info("Next up: a final (optional) prompt for feedback to help us improve the program.")
+        st.session_state.testimonial = ""
 
     cols = st.columns([1, 1, 6])
     with cols[0]:
         st.button("← Back", on_click=go_prev)
+
+    next_label = "Next →" if st.session_state.willing_contact else "Review & submit →"
     with cols[1]:
-        st.button("Next →", type="primary", on_click=go_next)
+        st.button(next_label, type="primary", on_click=go_next)
 
 
-# -----------------------
-# Step 5 of 5 — Optional feedback + Submit
-# -----------------------
 elif st.session_state.step == 5:
     st.header("Step 5 of 5 — Optional feedback")
 
