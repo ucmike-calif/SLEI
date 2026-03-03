@@ -1,9 +1,10 @@
-import streamlit as st
-import pandas as pd
-
 import io
 import re
 from datetime import datetime, timezone
+from pathlib import Path
+
+import streamlit as st
+import pandas as pd
 
 import gspread
 from google.oauth2.service_account import Credentials
@@ -34,15 +35,24 @@ ITEMS = [
     (16, "Effectively influence stakeholders beyond your formal authority to move important work forward", "Results"),
 ]
 
-DOMAINS = {
-    "Sight": [1, 2, 3, 4],
-    "Tenacity": [5, 6, 7, 8],
-    "Ability": [9, 10, 11, 12],
-    "Results": [13, 14, 15, 16],
-}
+DOMAINS = ["Sight", "Tenacity", "Ability", "Results"]
 
-FREQ_OPTIONS = ["Rarely", "Occasionally", "Sometimes", "Often", "Consistently", "Not applicable to my role"]
-CHANGE_OPTIONS = ["Much less often", "Slightly less often", "About the same", "Slightly more often", "Much more often"]
+FREQ_OPTIONS = [
+    "Rarely",
+    "Occasionally",
+    "Sometimes",
+    "Often",
+    "Consistently",
+    "Not applicable to my role",
+]
+
+CHANGE_OPTIONS = [
+    "Much less often",
+    "Slightly less often",
+    "About the same",
+    "Slightly more often",
+    "Much more often",
+]
 
 FREQ_MAP = {
     "Rarely": 1,
@@ -61,13 +71,14 @@ CHANGE_MAP = {
     "Much more often": 2,
 }
 
+
 # =======================
 # Helpers
 # =======================
 
 def safe_mean(vals):
     vals = [v for v in vals if isinstance(v, (int, float))]
-    return sum(vals) / len(vals) if vals else None
+    return (sum(vals) / len(vals)) if vals else None
 
 
 def round1(x):
@@ -78,25 +89,50 @@ def overall_descriptor(score):
     if score is None:
         return "Not scored"
     if score >= 4.5:
-        return "Consistently / Automatic"
+        return "Consistently"
     if score >= 4.0:
         return "Often"
     if score >= 3.0:
         return "Sometimes"
     if score >= 2.0:
-        return "Inconsistent"
+        return "Occasionally"
     return "Rarely"
 
 
-def utc_now_iso():
-    return datetime.now(timezone.utc).isoformat()
+def growth_interpretation(avg_change):
+    if avg_change is None:
+        return "No change score available."
+    if avg_change >= 1.25:
+        return "Large positive shift in how often you’re applying the behaviors."
+    if avg_change >= 0.5:
+        return "Clear positive shift in how often you’re applying the behaviors."
+    if avg_change > 0:
+        return "Modest positive shift in how often you’re applying the behaviors."
+    if avg_change == 0:
+        return "No overall change in reported application (some items may still have improved)."
+    if avg_change <= -1.25:
+        return "Large decrease in reported application (consider context, workload, or role changes)."
+    if avg_change <= -0.5:
+        return "Decrease in reported application (consider context, workload, or role changes)."
+    return "Slight decrease in reported application (consider context, workload, or role changes)."
 
 
-def slugify_filename(s: str) -> str:
-    s = s.strip().lower()
-    s = re.sub(r"[^a-z0-9]+", "_", s)
-    s = re.sub(r"_+", "_", s).strip("_")
-    return s[:64] if s else "dashboard"
+def format_top_items(items):
+    """items: list of tuples like (metric_value, qid, text, domain)."""
+    if not items:
+        return ""
+    lines = [f"• Q{qid}: {text}" for _val, qid, text, _dom in items]
+    return "
+".join(lines)
+
+
+
+def domain_scores_from_freq(freq_num: dict[int, int | None]):
+    scores = {}
+    for dom in DOMAINS:
+        dom_ids = [qid for qid, _txt, d in ITEMS if d == dom]
+        scores[dom] = round1(safe_mean([freq_num.get(qid) for qid in dom_ids]))
+    return scores
 
 
 def open_sheet():
@@ -114,11 +150,110 @@ def append_row_to_sheet(ws, row):
     ws.append_row(row, value_input_option="RAW")
 
 
+def ensure_headers(ws, headers):
+    existing = ws.row_values(1)
+    if existing == headers:
+        return
+    # If sheet is empty, write headers.
+    if not any(existing):
+        ws.insert_row(headers, 1)
+        return
+    # If sheet has a different header, do nothing (avoid destructive changes).
+
+
+def generate_report_code(ts: datetime, role_anchor: str, profession: str):
+    base = f"{ts.isoformat()}|{role_anchor}|{profession}"
+    # short stable-ish code; not a security feature
+    import hashlib
+
+    return hashlib.sha1(base.encode("utf-8")).hexdigest()[:8].upper()
+
+
+def replace_tokens_in_ppt(prs: Presentation, token_map: dict[str, str]) -> None:
+    """Replace {{TOKEN}} placeholders across the deck.
+
+    Robust to tokens being split across multiple runs.
+    Any leftover {{...}} is blanked so participants never see raw tokens.
+    """
+    token_keys = list(token_map.keys())
+
+    def apply(text: str) -> str:
+        if not text:
+            return text
+        for k in token_keys:
+            if k in text:
+                text = text.replace(k, token_map[k])
+        # Safety: remove any remaining tokens
+        return re.sub(r"\{\{[^}]+\}\}", "", text)
+
+    for slide in prs.slides:
+        for shape in slide.shapes:
+            if not getattr(shape, "has_text_frame", False):
+                continue
+
+            tf = shape.text_frame
+            for p in tf.paragraphs:
+                # Capture original text across runs
+                original = "".join(r.text for r in p.runs) if p.runs else p.text
+                replaced = apply(original)
+                if replaced == original:
+                    continue
+
+                # Preserve paragraph alignment
+                alignment = p.alignment
+
+                # Best-effort: preserve first run styling
+                size = bold = italic = name = color = None
+                if p.runs:
+                    f = p.runs[0].font
+                    size = f.size
+                    bold = f.bold
+                    italic = f.italic
+                    name = f.name
+                    if f.color and f.color.rgb:
+                        color = f.color.rgb
+
+                p.text = replaced
+                p.alignment = alignment
+
+                if p.runs:
+                    r0 = p.runs[0]
+                    if size is not None:
+                        r0.font.size = size
+                    if bold is not None:
+                        r0.font.bold = bold
+                    if italic is not None:
+                        r0.font.italic = italic
+                    if name is not None:
+                        r0.font.name = name
+                    if color is not None:
+                        r0.font.color.rgb = color
+
+
+def build_dashboard_pptx_bytes(
+    *,
+    token_map: dict[str, str],
+    template_path: str,
+) -> bytes:
+    template_file = Path(template_path)
+    if not template_file.exists():
+        raise FileNotFoundError(
+            f"Dashboard template not found at '{template_path}'. Ensure it is committed to the repo root."
+        )
+
+    prs = Presentation(str(template_file))
+    replace_tokens_in_ppt(prs, token_map)
+
+    bio = io.BytesIO()
+    prs.save(bio)
+    bio.seek(0)
+    return bio.read()
+
+
 def init_state():
     st.session_state.setdefault("step", 1)
-    st.session_state.setdefault("submitted_once", False)  # prevents duplicate dashboard gen in-session
 
-    # Context
+    # Step 1 context
     st.session_state.setdefault("role_anchor", None)
     st.session_state.setdefault("role_anchor_other", "")
     st.session_state.setdefault("profession", None)
@@ -127,21 +262,24 @@ def init_state():
     st.session_state.setdefault("scope", None)
     st.session_state.setdefault("scope_other", "")
 
-    # Per-item answers
-    st.session_state.setdefault("freq_sel", {qid: None for qid, _, _ in ITEMS})
-    st.session_state.setdefault("chg_sel", {qid: None for qid, _, _ in ITEMS})
+    # Step 2 / 3 answers
+    st.session_state.setdefault("freq_sel", {qid: None for qid, _t, _d in ITEMS})
+    st.session_state.setdefault("chg_sel", {qid: None for qid, _t, _d in ITEMS})
 
-    # Feedback / testimonial / contact
+    # Step 4 feedback
     st.session_state.setdefault("improve_feedback", "")
     st.session_state.setdefault("testimonial", "")
     st.session_state.setdefault("willing_contact", False)
+
+    # Step 5 contact (optional)
     st.session_state.setdefault("contact_name", "")
     st.session_state.setdefault("contact_email", "")
 
-    # Dashboard
+    # Dashboard generation state
     st.session_state.setdefault("dashboard_bytes", None)
     st.session_state.setdefault("dashboard_filename", "")
     st.session_state.setdefault("dashboard_generated_at", "")
+    st.session_state.setdefault("dashboard_generated", False)
 
 
 def go_next():
@@ -152,25 +290,25 @@ def go_prev():
     st.session_state.step -= 1
 
 
-def role_anchor_value():
-    ra = st.session_state.role_anchor
-    if ra == "Other":
-        return st.session_state.role_anchor_other.strip()
-    return ra
+def compute_scores():
+    freq_num = {qid: FREQ_MAP.get(st.session_state.freq_sel.get(qid)) for qid, _t, _d in ITEMS}
+    chg_num = {qid: CHANGE_MAP.get(st.session_state.chg_sel.get(qid)) for qid, _t, _d in ITEMS}
 
+    overall = round1(safe_mean([v for v in freq_num.values() if isinstance(v, (int, float))]))
+    overall_desc = overall_descriptor(overall)
 
-def profession_value():
-    prof = st.session_state.profession
-    if prof == "Other":
-        return st.session_state.profession_other.strip()
-    return prof
+    # only include change items for non-NA freq answers
+    chg_vals = [
+        chg_num[qid]
+        for qid, _t, _d in ITEMS
+        if freq_num.get(qid) is not None and isinstance(chg_num.get(qid), (int, float))
+    ]
+    avg_change = safe_mean(chg_vals)
 
+    # Growth boolean (any positive average)
+    growth = (avg_change is not None) and (avg_change > 0)
 
-def scope_value():
-    sc = st.session_state.scope
-    if sc == "Other":
-        return st.session_state.scope_other.strip()
-    return sc
+    return freq_num, chg_num, overall, overall_desc, avg_change, growth
 
 
 def required_missing_step1():
@@ -201,264 +339,25 @@ def required_missing_step1():
 
 
 def required_missing_freq():
-    return [qid for qid, _, _ in ITEMS if not st.session_state.freq_sel.get(qid)]
-
-
-def non_na_ids_from_freq():
-    return [qid for qid, _, _ in ITEMS if st.session_state.freq_sel.get(qid) != "Not applicable to my role"]
+    return [qid for qid, _t, _d in ITEMS if not st.session_state.freq_sel.get(qid)]
 
 
 def required_missing_change(non_na_ids):
     return [qid for qid in non_na_ids if not st.session_state.chg_sel.get(qid)]
 
 
-def compute_scores():
-    freq_num = {qid: FREQ_MAP.get(st.session_state.freq_sel.get(qid)) for qid, _, _ in ITEMS}
-    chg_num = {qid: CHANGE_MAP.get(st.session_state.chg_sel.get(qid)) for qid, _, _ in ITEMS}
-
-    # Overall (current consistency)
-    freq_vals = [v for v in freq_num.values() if isinstance(v, (int, float))]
-    overall = round1(safe_mean(freq_vals))
-    overall_desc = overall_descriptor(overall)
-
-    # Domain means
-    domain_scores = {}
-    for dom, ids in DOMAINS.items():
-        dom_vals = [freq_num[i] for i in ids if isinstance(freq_num.get(i), (int, float))]
-        domain_scores[dom] = round1(safe_mean(dom_vals))
-
-    # Average change (only for non-NA)
-    chg_vals = [
-        chg_num[qid]
-        for qid, _, _ in ITEMS
-        if freq_num.get(qid) is not None and isinstance(chg_num.get(qid), (int, float))
-    ]
-    avg_change = round1(safe_mean(chg_vals))
-    growth = (avg_change is not None) and (avg_change > 0)
-
-    # Strongest growth items (top 2 positive change among non-NA)
-    growth_items = []
-    for qid, text, dom in ITEMS:
-        if freq_num.get(qid) is None:
-            continue
-        cv = chg_num.get(qid)
-        if isinstance(cv, (int, float)):
-            growth_items.append((cv, qid, text, dom))
-    growth_items.sort(reverse=True, key=lambda t: t[0])
-    top_growth = [gi for gi in growth_items if gi[0] > 0][:2]
-
-    # Opportunities = lowest current frequency items (top 2) among non-NA
-    opp_items = []
-    for qid, text, dom in ITEMS:
-        fv = freq_num.get(qid)
-        if isinstance(fv, (int, float)):
-            opp_items.append((fv, qid, text, dom))
-    opp_items.sort(key=lambda t: t[0])
-    top_opp = opp_items[:2]
-
-    return {
-        "freq_num": freq_num,
-        "chg_num": chg_num,
-        "overall": overall,
-        "overall_desc": overall_desc,
-        "domain_scores": domain_scores,
-        "avg_change": avg_change,
-        "growth": growth,
-        "top_growth": top_growth,
-        "top_opp": top_opp,
-    }
-
-
-def band_sentence_for_descriptor(desc: str) -> str:
-    # short, non-judgmental coaching line
-    mapping = {
-        "Consistently / Automatic": "Very strong consistency — these behaviors are close to default settings.",
-        "Often": "Strong consistency — these behaviors show up reliably in most situations.",
-        "Sometimes": "Solid foundation — these behaviors show up, with room to make them more consistent.",
-        "Inconsistent": "Early momentum — consistency may depend on context, systems, or support.",
-        "Rarely": "Starting point — focus on one small practice to build consistency over time.",
-        "Not scored": "Not enough applicable items to score this section.",
-    }
-    return mapping.get(desc, "")
-
-
-def growth_summary_from_avg(avg_change):
-    if avg_change is None:
-        return "No change score (insufficient applicable items)"
-    sign = "+" if avg_change > 0 else ""  # show + for positive
-    return f"{sign}{avg_change:.1f} avg"
-
-
-def growth_interpretation(avg_change):
-    if avg_change is None:
-        return "No change score available."
-    if avg_change >= 1.25:
-        return "Large positive shift in how often you’re applying the behaviors."
-    if avg_change >= 0.5:
-        return "Clear positive shift in how often you’re applying the behaviors."
-    if avg_change > 0:
-        return "Modest positive shift in how often you’re applying the behaviors."
-    if avg_change == 0:
-        return "No overall change in reported application (some items may still have improved)."
-    if avg_change <= -1.25:
-        return "Large decrease in reported application (consider context, workload, or role changes)."
-    if avg_change <= -0.5:
-        return "Decrease in reported application (consider context, workload, or role changes)."
-    return "Slight decrease in reported application (consider context, workload, or role changes)."
-
-
-def format_top_items(items):
-    """Format top-items list for dashboard text blocks.
-
-    items: list of tuples like (metric_value, qid, text, domain)
-    Returns a bullet list string.
-    """
-    if not items:
-        return ""
-
-    lines = []
-    for _val, qid, text, _dom in items:
-        lines.append(f"• Q{qid}: {text}")
-
-    return "\n".join(lines)
-
-
-
-def pick_strongest_domain_by_score(domain_scores: dict):
-    # Use current frequency (not growth) for the domain profile label.
-    best_dom = None
-    best_val = None
-    for dom, val in domain_scores.items():
-        if val is None:
-            continue
-        if best_val is None or val > best_val:
-            best_val = val
-            best_dom = dom
-    return best_dom, best_val
-
-
-def replace_tokens_in_ppt(prs: Presentation, token_map: dict) -> None:
-    """Replaces {{TOKEN}} text in all text frames in-place."""
-    for slide in prs.slides:
-        for shape in slide.shapes:
-            if not shape.has_text_frame:
-                continue
-            tf = shape.text_frame
-            for p in tf.paragraphs:
-                for r in p.runs:
-                    if not r.text:
-                        continue
-                    for k, v in token_map.items():
-                        if k in r.text:
-                            r.text = r.text.replace(k, v)
-
-
-def build_token_map(scores: dict) -> dict:
-    domain_scores = scores["domain_scores"]
-    strongest_dom, _ = pick_strongest_domain_by_score(domain_scores)
-
-    # Growth text areas
-    top_growth_text = format_top_items(scores["top_growth"]) or "• (No positive-growth items identified)"
-    opp_text = format_top_items(scores["top_opp"]) or "• (No opportunities identified)"
-
-    # Optional: strongest detail line can be your narrative or a short phrase
-    strongest_detail = "Most gains in alignment & execution habits" if strongest_dom == "Results" else "Most gains in key leadership habits"
-
-    overall = scores["overall"]
-    overall_desc = scores["overall_desc"]
-
-    token_map = {
-        "{{DASHBOARD_TITLE}}": "SLEI Participant Dashboard",
-        "{{DASHBOARD_SUBTITLE}}": "STAR Leadership Effectiveness Index • v2 Pilot",
-        "{{DASHBOARD_INTRO}}": (
-            "This dashboard is not a course grade. It is a development tool that summarizes your self-perceived growth "
-            "during the program and your current consistency in performing critical leadership behaviors across four domains "
-            "(Sight, Tenacity, Ability, and Results). Use it to recognize progress, identify 1–2 priorities, and choose a specific "
-            "60–90 day practice focus."
-        ),
-
-        # Consistency KPI
-        "{{CONSISTENCY_SCORE}}": "" if overall is None else f"{overall:.1f} / 5",
-        "{{CONSISTENCY_BAND}}": overall_desc,
-        "{{CONSISTENCY_BAND_SENTENCE}}": band_sentence_for_descriptor(overall_desc),
-
-        # Growth KPI
-        "{{GROWTH_AVG}}": growth_summary_from_avg(scores["avg_change"]),
-        "{{GROWTH_SUMMARY}}": (
-            "Increased in "
-            + str(
-                sum(
-                    1
-                    for qid in range(1, 17)
-                    if scores["freq_num"].get(qid) is not None and isinstance(scores["chg_num"].get(qid), (int, float)) and scores["chg_num"].get(qid) > 0
-                )
-            )
-            + " of "
-            + str(sum(1 for qid in range(1, 17) if scores["freq_num"].get(qid) is not None))
-            + " behaviors"
-        ),
-        "{{GROWTH_SENTENCE}}": growth_interpretation(scores["avg_change"]),
-
-        # Strongest domain tile
-        "{{STRONGEST_DOMAIN}}": strongest_dom or "—",
-        "{{STRONGEST_DETAIL}}": strongest_detail,
-
-        # Domain scores
-        "{{SIGHT_SCORE}}": "—" if domain_scores.get("Sight") is None else f"{domain_scores['Sight']:.1f}",
-        "{{TENACITY_SCORE}}": "—" if domain_scores.get("Tenacity") is None else f"{domain_scores['Tenacity']:.1f}",
-        "{{ABILITY_SCORE}}": "—" if domain_scores.get("Ability") is None else f"{domain_scores['Ability']:.1f}",
-        "{{RESULTS_SCORE}}": "—" if domain_scores.get("Results") is None else f"{domain_scores['Results']:.1f}",
-
-        # Left column narrative (optional)
-        "{{CONSISTENCY_INTERPRETATION}}": (
-            "Overall: "
-            + ("—" if overall is None else f"{overall:.1f}/5")
-            + f" ({overall_desc}) — "
-            + (band_sentence_for_descriptor(overall_desc) or "")
-        ),
-
-        # Growth / Opportunities blocks
-        "{{TOP_GROWTH_ITEMS}}": top_growth_text,
-        "{{TOP_OPPORTUNITIES_ITEMS}}": opp_text,
-
-        # Action plan prompt
-        "{{ACTIONPLAN_PROMPT}}": "Complete this 60–90 day action plan (progress > perfection):",
-    }
-
-    # Ensure all values are strings
-    return {k: ("" if v is None else str(v)) for k, v in token_map.items()}
-
-
-def build_dashboard_bytes(template_path: str, token_map: dict) -> bytes:
-    prs = Presentation(template_path)
-    replace_tokens_in_ppt(prs, token_map)
-    bio = io.BytesIO()
-    prs.save(bio)
-    bio.seek(0)
-    return bio.read()
-
-
-def reset_for_next_respondent():
-    # keep submitted_once True so they can't spam within same session
-    keep = {"submitted_once": st.session_state.get("submitted_once", False)}
-    st.session_state.clear()
-    for k, v in keep.items():
-        st.session_state[k] = v
-    init_state()
-
-
 # =======================
-# UI
+# UI Setup
 # =======================
+st.set_page_config(page_title="SLEI v2.0", layout="wide")
 init_state()
 
-st.set_page_config(page_title="SLEI v2.0", layout="wide")
 st.title("STAR Leadership Effectiveness Index (SLEI) – v2 Pilot")
 
 st.markdown(
     """**Purpose**
 
-This assessment supports your continued development and helps us improve the program.
+This assessment is designed to support your continued development and help us improve the program.
 
 **Structure**
 
@@ -466,13 +365,14 @@ You will answer 16 questions about key leadership behaviors in two sections:
 1. The **Current Frequency** section asks you to indicate how often you perform these behaviors now (after completing the course).
 2. The **Change in Frequency** section asks how your current frequency compares to the frequency before the course.
 
-Because leadership looks different across contexts, we ask you to select **one role** and use it consistently so your responses are accurate and comparable.
+Because leadership looks different across contexts, select one role and use it consistently so your responses are accurate and comparable.
 """
 )
 
-# -----------------------
-# Step 1 — Context
-# -----------------------
+
+# =======================
+# Step 1 of 5 — Context
+# =======================
 if st.session_state.step == 1:
     st.header("Step 1 of 5 — Context")
 
@@ -534,18 +434,22 @@ if st.session_state.step == 1:
     if missing:
         st.info("To continue, complete: " + ", ".join(missing))
 
-    cols = st.columns([1, 8])
+    cols = st.columns([1, 1, 6])
     with cols[0]:
         st.button("Next →", type="primary", on_click=go_next, disabled=bool(missing))
 
-# -----------------------
-# Step 2 — Current frequency
-# -----------------------
+
+# =======================
+# Step 2 of 5 — Current frequency
+# =======================
 elif st.session_state.step == 2:
     st.header("Step 2 of 5 — Current frequency")
-    st.caption("For each item, select how often you perform it now. Choose ‘Not applicable’ if it does not apply to the role you selected.")
 
-    for qid, text, _ in ITEMS:
+    st.caption(
+        "For each item, select how often you perform it now. Choose ‘Not applicable’ if it does not apply to the role you selected."
+    )
+
+    for qid, text, _dom in ITEMS:
         st.session_state.freq_sel[qid] = st.radio(
             f"Q{qid}. {text}",
             FREQ_OPTIONS,
@@ -558,24 +462,30 @@ elif st.session_state.step == 2:
     if missing_qs:
         st.info(f"To continue, answer all current-frequency items (missing: {len(missing_qs)}).")
 
-    cols = st.columns([1, 1, 8])
+    cols = st.columns([1, 1, 6])
     with cols[0]:
         st.button("← Back", on_click=go_prev)
     with cols[1]:
         st.button("Next →", type="primary", on_click=go_next, disabled=bool(missing_qs))
 
-# -----------------------
-# Step 3 — Change in frequency (hide N/A)
-# -----------------------
+
+# =======================
+# Step 3 of 5 — Change in frequency (hidden for N/A)
+# =======================
 elif st.session_state.step == 3:
     st.header("Step 3 of 5 — Change in frequency")
     st.caption("You’ll only see change questions for items you did not mark as ‘Not applicable.’")
 
-    non_na_ids = non_na_ids_from_freq()
+    non_na_ids = [
+        qid
+        for qid, _t, _d in ITEMS
+        if st.session_state.freq_sel.get(qid) != "Not applicable to my role"
+    ]
+
     if not non_na_ids:
         st.warning("You marked all items as ‘Not applicable.’ You can still provide optional feedback.")
     else:
-        for qid, text, _ in ITEMS:
+        for qid, text, _dom in ITEMS:
             if qid not in non_na_ids:
                 continue
             st.session_state.chg_sel[qid] = st.radio(
@@ -586,184 +496,347 @@ elif st.session_state.step == 3:
                 key=f"chg_{qid}",
             )
 
-    missing_chg = required_missing_change(non_na_ids) if non_na_ids else []
+    missing_chg = required_missing_change(non_na_ids)
     if non_na_ids and missing_chg:
         st.info(f"To continue, answer all change items shown (missing: {len(missing_chg)}).")
 
-    cols = st.columns([1, 1, 8])
+    cols = st.columns([1, 1, 6])
     with cols[0]:
         st.button("← Back", on_click=go_prev)
     with cols[1]:
-        st.button("Next →", type="primary", on_click=go_next, disabled=bool(missing_chg))
+        st.button("Next →", type="primary", on_click=go_next, disabled=bool(non_na_ids and missing_chg))
 
-# -----------------------
-# Step 4 — Feedback & testimonial
-# -----------------------
+
+# =======================
+# Step 4 of 5 — Testimonial (optional)
+# =======================
 elif st.session_state.step == 4:
-    st.header("Step 4 of 5 — Optional feedback")
+    st.header("Step 4 of 5 — Testimonial (optional)")
 
-    st.session_state.improve_feedback = st.text_area(
-        "Any suggestions to improve the course structure, processes, systems, or curriculum? (optional)",
-        value=st.session_state.improve_feedback,
-        height=140,
-    )
-
-    st.markdown("---")
-    st.subheader("Testimonial (optional)")
     st.caption(
-        "If you’re willing, a helpful testimonial often includes: what changed for you, a concrete example, and what you’d say to someone considering the program."
+        "This section is optional. If you choose to share a testimonial, it helps others understand the value of the program."
     )
 
-    # Ask for testimonial only if their results indicate positive growth
-    scores = compute_scores()
-    if scores["growth"]:
-        st.session_state.testimonial = st.text_area(
-            "If you’d like, share a short testimonial or comment about the program (optional)",
-            value=st.session_state.testimonial,
-            height=140,
-        )
+    st.markdown(
+        "**Guidance:** A helpful testimonial often includes (1) what changed for you, (2) one concrete example, and (3) what you’d say to someone considering the program."
+    )
 
-        st.session_state.willing_contact = st.checkbox(
-            "I’m open to being contacted about using my feedback/testimonial (optional)",
-            value=st.session_state.willing_contact,
-        )
-    else:
-        st.session_state.testimonial = ""
-        st.session_state.willing_contact = False
+    st.session_state.testimonial = st.text_area(
+        "If you’d like, share a short testimonial or comment about the program (optional)",
+        value=st.session_state.testimonial,
+        height=160,
+    )
 
-    cols = st.columns([1, 1, 8])
+    st.session_state.willing_contact = st.checkbox(
+        "I’m open to being contacted about using my feedback/testimonial (optional)",
+        value=st.session_state.willing_contact,
+    )
+
+    cols = st.columns([1, 1, 6])
     with cols[0]:
         st.button("← Back", on_click=go_prev)
     with cols[1]:
         st.button("Next →", type="primary", on_click=go_next)
 
-# -----------------------
-# Step 5 — Review & submit (auto-generate dashboard)
-# -----------------------
+
+# =======================
+# Step 5 of 5 — Submit + optional feedback + dashboard download
+# =======================
 elif st.session_state.step == 5:
-    st.header("Step 5 of 5 — Submit & download your dashboard")
+    st.header("Step 5 of 5 — Optional feedback & submit")
+
+    st.session_state.improve_feedback = st.text_area(
+        "Any suggestions to improve the course structure, processes, systems, or curriculum? (optional)",
+        value=st.session_state.improve_feedback,
+        height=160,
+    )
 
     if st.session_state.willing_contact:
+        st.subheader("Contact information (optional)")
         st.caption("Provide contact details only if you’re comfortable being contacted about your testimonial.")
         st.session_state.contact_name = st.text_input("Name (optional)", value=st.session_state.contact_name)
         st.session_state.contact_email = st.text_input("Email (optional)", value=st.session_state.contact_email)
 
-    # Keep this page clean: no scoring narrative here.
-    st.info("When you click Submit, your responses will be saved and your dashboard will be generated for download.")
-
-    cols = st.columns([1, 1, 8])
+    cols = st.columns([1, 1, 6])
     with cols[0]:
         st.button("← Back", on_click=go_prev)
 
-    # Prevent duplicate generation in-session
-    disable_submit = bool(st.session_state.submitted_once)
     with cols[1]:
-        do_submit = st.button("Submit", type="primary", disabled=disable_submit)
+        submitted = st.button("Submit", type="primary")
 
-    if do_submit:
-        # Safety checks
-        missing = required_missing_step1()
-        if missing:
-            st.error("Missing required fields: " + ", ".join(missing))
-            st.stop()
+    if submitted:
+        # Prevent duplicate generation on reruns
+        if st.session_state.dashboard_generated:
+            st.info("Your dashboard is already generated below.")
+        else:
+            # Required checks
+            missing = required_missing_step1()
+            if missing:
+                st.error("Missing required fields: " + ", ".join(missing))
+                st.stop()
 
-        missing_freq = required_missing_freq()
-        if missing_freq:
-            st.error("Missing current-frequency answers.")
-            st.stop()
+            missing_freq = required_missing_freq()
+            if missing_freq:
+                st.error("Missing current-frequency answers.")
+                st.stop()
 
-        non_na_ids = non_na_ids_from_freq()
-        missing_chg = required_missing_change(non_na_ids) if non_na_ids else []
-        if non_na_ids and missing_chg:
-            st.error("Missing change answers for one or more items shown.")
-            st.stop()
-
-        # Compute
-        scores = compute_scores()
-
-        # Generate dashboard
-        try:
-            token_map = build_token_map(scores)
-            pptx_bytes = build_dashboard_bytes(TEMPLATE_PATH, token_map)
-        except Exception as e:
-            st.error("Dashboard generation failed. Check that the PPTX template exists in the repo and is tokenized.")
-            st.exception(e)
-            st.stop()
-
-        # Filename + timestamps
-        generated_at = utc_now_iso()
-        base = "SLEI_Dashboard"
-        fname = f"{base}_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.pptx"
-
-        # Save to Google Sheet
-        try:
-            ws = open_sheet()
-
-            # Prepare values for row
-            ra = role_anchor_value()
-            prof = profession_value()
-            sc = scope_value()
-
-            freq_num = scores["freq_num"]
-            chg_num = scores["chg_num"]
-
-            row = [
-                utc_now_iso(),
-                APP_VERSION,
-                ra,
-                prof,
-                st.session_state.years,
-                sc,
-                "" if scores["overall"] is None else str(scores["overall"]),
-                scores["overall_desc"],
-                "" if scores["avg_change"] is None else str(scores["avg_change"]),
-                "Yes" if scores["growth"] else "No",
-                "Yes" if st.session_state.willing_contact else "No",
-                st.session_state.testimonial.strip(),
-                st.session_state.improve_feedback.strip(),
-                st.session_state.contact_name.strip(),
-                st.session_state.contact_email.strip(),
+            non_na_ids = [
+                qid
+                for qid, _t, _d in ITEMS
+                if st.session_state.freq_sel.get(qid) != "Not applicable to my role"
             ]
+            missing_chg = required_missing_change(non_na_ids)
+            if non_na_ids and missing_chg:
+                st.error("Missing change answers for one or more items.")
+                st.stop()
 
-            # freq_1..freq_16
-            row += [
-                str(freq_num[qid]) if isinstance(freq_num.get(qid), (int, float)) else ""
-                for qid in range(1, 17)
-            ]
+            # Build final context values
+            role_anchor = st.session_state.role_anchor
+            if role_anchor == "Other":
+                role_anchor = st.session_state.role_anchor_other.strip()
 
-            # chg_1..chg_16 (blank for NA)
-            non_na_ids_num = [qid for qid in range(1, 17) if freq_num.get(qid) is not None]
-            row += [
-                str(chg_num[qid]) if (qid in non_na_ids_num and isinstance(chg_num.get(qid), (int, float))) else ""
-                for qid in range(1, 17)
-            ]
+            profession = st.session_state.profession
+            if profession == "Other":
+                profession = st.session_state.profession_other.strip()
 
-            # dashboard fields
-            row += [generated_at, fname]
+            scope = st.session_state.scope
+            if scope == "Other":
+                scope = st.session_state.scope_other.strip()
 
-            append_row_to_sheet(ws, row)
-        except Exception as e:
-            st.error("Could not save to Google Sheets (secrets / sheet setup may be missing or incomplete).")
-            st.exception(e)
-            st.stop()
+            # Compute scores
+            freq_num, chg_num, overall, overall_desc, avg_change, growth = compute_scores()
+            dom_scores = domain_scores_from_freq(freq_num)
 
-        # Mark as submitted (prevents duplicates)
-        st.session_state.submitted_once = True
-        st.session_state.dashboard_bytes = pptx_bytes
-        st.session_state.dashboard_filename = fname
-        st.session_state.dashboard_generated_at = generated_at
+            # Strongest reported growth: top positive change items (exclude NA)
+            pos_growth = []
+            for qid, text, dom in ITEMS:
+                if freq_num.get(qid) is None:
+                    continue
+                v = chg_num.get(qid)
+                if isinstance(v, (int, float)) and v > 0:
+                    pos_growth.append((v, qid, text, dom))
+            pos_growth.sort(key=lambda x: (x[0], x[1]), reverse=True)
+            strongest_growth_items = pos_growth[:2]
 
-        st.success("Submitted. Your dashboard is ready to download below.")
+            # Opportunities: lowest current frequency among non-NA
+            lows = []
+            for qid, text, dom in ITEMS:
+                v = freq_num.get(qid)
+                if isinstance(v, (int, float)):
+                    lows.append((v, qid, text, dom))
+            lows.sort(key=lambda x: (x[0], x[1]))
+            opp_items = lows[:2]
 
-    # Show download button if we have a dashboard in session
-    if st.session_state.dashboard_bytes:
+            # Growth summary
+            improved_count = sum(
+                1
+                for qid in non_na_ids
+                if isinstance(chg_num.get(qid), (int, float)) and chg_num[qid] > 0
+            )
+
+                        # Dashboard token map
+            ts = datetime.now(timezone.utc)
+            report_code = generate_report_code(ts, role_anchor, profession)
+            filename = f"SLEI_Dashboard_{report_code}.pptx"
+
+            # Convenience helpers for token text (template already includes bullets)
+            def as_item_text(items, idx):
+                if len(items) > idx:
+                    _v, qid, text, _dom = items[idx]
+                    return f"Q{qid}: {text}"
+                return ""
+
+            # Strongest growth domain should reflect CHANGE (not current score)
+            domain_growth = {}
+            for dom in DOMAINS:
+                dom_ids = [qid for qid, _txt, d in ITEMS if d == dom]
+                vals = [chg_num.get(qid) for qid in dom_ids if freq_num.get(qid) is not None and isinstance(chg_num.get(qid), (int, float))]
+                domain_growth[dom] = safe_mean(vals)
+
+            strongest_growth_dom = None
+            strongest_growth_val = None
+            for dom, val in domain_growth.items():
+                if val is None:
+                    continue
+                if strongest_growth_val is None or val > strongest_growth_val:
+                    strongest_growth_val = val
+                    strongest_growth_dom = dom
+
+            strongest_detail = (
+                f"Most gains in {strongest_growth_dom.lower()} behaviors"
+                if strongest_growth_dom
+                else ""
+            )
+
+            # Consistency interpretation line (kept short for the tile)
+            consistency_line = (
+                f"Overall: {overall:.1f}/5 ({overall_desc}) — a snapshot of day-to-day application."
+                if overall is not None
+                else "Overall: Not scored"
+            )
+
+            # Growth avg text for tile
+            growth_avg_text = "" if avg_change is None else f"{avg_change:+.1f} avg"
+            growth_summary = (
+                f"Increased in {improved_count} of {len(non_na_ids)} behaviors" if non_na_ids else "No applicable behaviors"
+            )
+
+            # Narrative tokens for the lower tiles
+            top_growth_why = (
+                "Why this matters: small shifts in application compound — especially when you build repeatable habits in real situations."
+            )
+            top_growth_prompt = (
+                "Use this insight as a prompt: pick one real situation in the next 60–90 days where you will practice intentionally."
+            )
+            opp_nextstep = (
+                "Next step: Identify one upcoming situation to practice each behavior intentionally."
+            )
+
+            token_map = {
+                # Header / intro
+                "{{DASHBOARD_TITLE}}": "SLEI Participant Dashboard",
+                "{{DASHBOARD_SUBTITLE}}": f"STAR Leadership Effectiveness Index • {APP_VERSION}",
+                "{{DASHBOARD_INTRO}}": (
+                    "This dashboard is not a grade. It summarizes your self-reported application of key leadership behaviors and the change you reported since before the course."
+                ),
+
+                # Consistency tile
+                "{{CONSISTENCY_SCORE}}": ("" if overall is None else f"{overall:.1f} / 5"),
+                "{{CONSISTENCY_BAND}}": overall_desc,
+                "{{CONSISTENCY_INTERPRETATION}}": consistency_line,
+
+                # Growth tile
+                "{{GROWTH_AVG}}": growth_avg_text,
+                "{{GROWTH_SUMMARY}}": growth_summary,
+                "{{GROWTH_INTERPRETATION}}": growth_interpretation(avg_change),
+
+                # Domain scores
+                "{{SIGHT_SCORE}}": ("" if dom_scores.get("Sight") is None else f"{dom_scores['Sight']:.1f}"),
+                "{{TENACITY_SCORE}}": ("" if dom_scores.get("Tenacity") is None else f"{dom_scores['Tenacity']:.1f}"),
+                "{{ABILITY_SCORE}}": ("" if dom_scores.get("Ability") is None else f"{dom_scores['Ability']:.1f}"),
+                "{{RESULTS_SCORE}}": ("" if dom_scores.get("Results") is None else f"{dom_scores['Results']:.1f}"),
+
+                # Strongest area of growth (CHANGE-based)
+                "{{STRONGEST_GROWTH_DOMAIN}}": strongest_growth_dom or "",
+                "{{STRONGEST_DOMAIN}}": strongest_growth_dom or "",  # backward-compat
+                "{{STRONGEST_DETAIL}}": strongest_detail,
+
+                # Strongest reported growth (top positive-change items)
+                "{{TOP_GROWTH_ITEM_1}}": as_item_text(strongest_growth_items, 0),
+                "{{TOP_GROWTH_ITEM_2}}": as_item_text(strongest_growth_items, 1),
+                "{{TOP_GROWTH_WHY}}": top_growth_why,
+                "{{TOP_GROWTH_PROMPT}}": top_growth_prompt,
+
+                # Opportunities (lowest current-frequency items)
+                "{{TOP_OPPORTUNITY_ITEM_1}}": as_item_text(opp_items, 0),
+                "{{TOP_OPPORTUNITY_ITEM_2}}": as_item_text(opp_items, 1),
+                "{{TOP_OPPORTUNITY_NEXTSTEP}}": opp_nextstep,
+
+                # Action plan
+                "{{ACTIONPLAN_PROMPT}}": "Complete this 60–90 day action plan",
+
+                # Optional tracking
+                "{{REPORT_CODE}}": report_code,
+
+                # Backward-compat (if older token template variants exist)
+                "{{STRONGEST_REPORTED_GROWTH_ITEMS}}": format_top_items(strongest_growth_items),
+                "{{OPPORTUNITIES_ITEMS}}": format_top_items(opp_items),
+            }
+
+            # Generate dashboard bytes
+            try:
+                ppt_bytes = build_dashboard_pptx_bytes(token_map=token_map, template_path=TEMPLATE_PATH)
+            except Exception as e:
+                st.error("Dashboard generation failed.")
+                st.exception(e)
+                st.stop()
+
+            # Write to Google Sheet
+            try:
+                ws = open_sheet()
+
+                headers = [
+                    "timestamp",
+                    "app_version",
+                    "role_anchor",
+                    "profession",
+                    "years_experience",
+                    "leadership_scope",
+                    "overall_score",
+                    "overall_descriptor",
+                    "avg_change",
+                    "growth",
+                    "willing_contact",
+                    "testimonial",
+                    "improve_feedback",
+                    "contact_name",
+                    "contact_email",
+                ]
+                headers += [f"freq_{i}" for i in range(1, 17)]
+                headers += [f"chg_{i}" for i in range(1, 17)]
+                headers += ["dashboard_generated_at", "dashboard_filename"]
+
+                ensure_headers(ws, headers)
+
+                row = [
+                    ts.isoformat(),
+                    APP_VERSION,
+                    role_anchor,
+                    profession,
+                    st.session_state.years,
+                    scope,
+                    ("" if overall is None else str(overall)),
+                    overall_desc,
+                    ("" if avg_change is None else str(round1(avg_change))),
+                    "Yes" if growth else "No",
+                    "Yes" if st.session_state.willing_contact else "No",
+                    st.session_state.testimonial.strip(),
+                    st.session_state.improve_feedback.strip(),
+                    st.session_state.contact_name.strip(),
+                    st.session_state.contact_email.strip(),
+                ]
+
+                row += [
+                    ("" if freq_num.get(i) is None else str(freq_num[i]))
+                    for i in range(1, 17)
+                ]
+
+                non_na_for_save = [i for i in range(1, 17) if freq_num.get(i) is not None]
+                row += [
+                    ("" if (i not in non_na_for_save or not isinstance(chg_num.get(i), (int, float))) else str(chg_num[i]))
+                    for i in range(1, 17)
+                ]
+
+                row += [ts.isoformat(), filename]
+
+                append_row_to_sheet(ws, row)
+            except Exception as e:
+                st.error("Could not save to Google Sheets (check Streamlit secrets and sheet permissions).")
+                st.exception(e)
+                st.stop()
+
+            # Cache dashboard in session_state (prevents duplicate generation on rerun)
+            st.session_state.dashboard_bytes = ppt_bytes
+            st.session_state.dashboard_filename = filename
+            st.session_state.dashboard_generated_at = ts.isoformat()
+            st.session_state.dashboard_generated = True
+
+            st.success("Submitted. Your dashboard is ready below.")
+
+    # Download button (shows after successful submit)
+    if st.session_state.dashboard_generated and st.session_state.dashboard_bytes:
+        st.markdown("---")
+        st.subheader("Download your dashboard")
         st.download_button(
-            label="Download your dashboard (PowerPoint)",
+            label="Download PowerPoint",
             data=st.session_state.dashboard_bytes,
             file_name=st.session_state.dashboard_filename,
             mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
         )
-        st.caption("Tip: Save this file somewhere you can find it later (e.g., Downloads → move to a folder).")
+        st.caption(
+            "If you misplace the file, you can re-download during this session using the button above."
+        )
 
 else:
+    # Safety: reset to first step if state is ever out of range
     st.session_state.step = 1
