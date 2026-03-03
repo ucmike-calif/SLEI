@@ -68,15 +68,15 @@ TOK = {
     "CONS_SCORE": "{{CONSISTENCY_SCORE}}",
     "CONS_BAND": "{{CONSISTENCY_BAND}}",
     "CONS_INTERP": "{{CONSISTENCY_INTERPRETATION}}",
-    "GROWTH_AVG": "{{GROWTH_AVERAGE}}",
+    "GROWTH_AVG": "{{GROWTH_AVG}}",
     "GROWTH_SUM": "{{GROWTH_SUMMARY}}",
     "GROWTH_INTERP": "{{GROWTH_INTERPRETATION}}",
     "SIGHT": "{{SIGHT_SCORE}}",
     "TENACITY": "{{TENACITY_SCORE}}",
     "ABILITY": "{{ABILITY_SCORE}}",
     "RESULTS": "{{RESULTS_SCORE}}",
-    "STRONGEST_GROWTH_DOM": "{{STRONGEST_GROWTH_DOMAIN}}",
-    "STRONGEST_GROWTH_DETAIL": "{{STRONGEST_GROWTH_DETAIL}}",
+    "STRONGEST_GROWTH_DOM": "{{STRONGEST_DOMAIN}}",
+    "STRONGEST_GROWTH_DETAIL": "{{STRONGEST_DETAIL}}",
     "TOP_GROWTH_1": "{{TOP_GROWTH_ITEM_1}}",
     "TOP_GROWTH_2": "{{TOP_GROWTH_ITEM_2}}",
     "TOP_GROWTH_WHY": "{{TOP_GROWTH_WHY}}",
@@ -307,20 +307,12 @@ def _set_autofit(shape):
 
 
 def replace_tokens_in_ppt(prs: Presentation, token_map: dict) -> None:
-    """Replace {{TOKEN}} occurrences across all runs.
+    """Replace {{TOKEN}} occurrences across text frames.
 
-    Important: we do NOT touch colors; prior attempts to read/clone colors can crash
-    on theme-based fonts ("_NoneColor").
+    Handles tokens that PowerPoint might split across multiple runs by 
+    aggregating paragraph text. Removes forced font sizing to prevent 
+    text spacing/overlapping issues.
     """
-    # Token-specific sizing (to avoid spillover in tight boxes)
-    small_tokens = {
-        TOK["TOP_GROWTH_WHY"],
-        TOK["TOP_GROWTH_PROMPT"],
-        TOK["TOP_OPP_NEXT"],
-        TOK["CONS_INTERP"],
-        TOK["GROWTH_INTERP"],
-    }
-
     for slide in prs.slides:
         for shape in slide.shapes:
             if not getattr(shape, "has_text_frame", False):
@@ -328,24 +320,22 @@ def replace_tokens_in_ppt(prs: Presentation, token_map: dict) -> None:
             tf = shape.text_frame
             touched = False
             for p in tf.paragraphs:
-                for r in p.runs:
-                    if not r.text:
-                        continue
-                    for k, v in token_map.items():
-                        if k in r.text:
-                            r.text = r.text.replace(k, v)
-                            touched = True
-                            # conservative font sizing for dense blocks
-                            if k in small_tokens:
-                                try:
-                                    r.font.size = Pt(11)
-                                except Exception:
-                                    pass
-                            elif k in {TOK["TOP_GROWTH_1"], TOK["TOP_GROWTH_2"], TOK["TOP_OPP_1"], TOK["TOP_OPP_2"]}:
-                                try:
-                                    r.font.size = Pt(14)
-                                except Exception:
-                                    pass
+                # Combine runs to safely catch tokens split across runs
+                full_text = "".join(r.text for r in p.runs if r.text)
+                original_text = full_text
+                
+                for k, v in token_map.items():
+                    if k in full_text:
+                        full_text = full_text.replace(k, str(v))
+                
+                if full_text != original_text:
+                    touched = True
+                    if p.runs:
+                        # Safely replace text in the first run and clear others
+                        # This preserves the paragraph's native template styling
+                        p.runs[0].text = full_text
+                        for r in p.runs[1:]:
+                            r.text = ""
             if touched:
                 _set_autofit(shape)
 
