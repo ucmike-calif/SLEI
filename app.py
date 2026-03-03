@@ -59,8 +59,6 @@ CHANGE_MAP = {
 }
 
 # Dashboard token keys (must match {{TOKEN}} in template)
-# Token helpers for the dashboard PPTX template
-# (Keys are internal; values are the exact {{TOKENS}} present in the PPTX.)
 TOK = {
     "TITLE": "{{DASHBOARD_TITLE}}",
     "SUBTITLE": "{{DASHBOARD_SUBTITLE}}",
@@ -75,7 +73,7 @@ TOK = {
     "TENACITY": "{{TENACITY_SCORE}}",
     "ABILITY": "{{ABILITY_SCORE}}",
     "RESULTS": "{{RESULTS_SCORE}}",
-    "STRONGEST_GROWTH_DOM": "{{STRONGEST_DOMAIN}}",
+    "STRONGEST_GROWTH_DOM": "{{STRONGEST_GROWTH_DOMAIN}}",
     "STRONGEST_GROWTH_DETAIL": "{{STRONGEST_DETAIL}}",
     "TOP_GROWTH_1": "{{TOP_GROWTH_ITEM_1}}",
     "TOP_GROWTH_2": "{{TOP_GROWTH_ITEM_2}}",
@@ -115,7 +113,6 @@ def overall_descriptor(score):
 
 
 def consistency_interpretation(score):
-    # Short, non-judgy; optimized to fit box.
     if score is None:
         return "No overall score (all items marked Not applicable)."
     band = overall_descriptor(score)
@@ -149,7 +146,6 @@ def growth_interpretation(avg_change):
 
 
 def format_bullets(q_items):
-    """q_items: list[(qid, text)]"""
     lines = []
     for qid, text in q_items:
         lines.append(f"• Q{qid}: {text}")
@@ -187,14 +183,14 @@ def init_state():
     st.session_state.setdefault("freq_sel", {qid: None for qid, _, _ in ITEMS})
     st.session_state.setdefault("chg_sel", {qid: None for qid, _, _ in ITEMS})
 
-    # Feedback / optional contact
+    # Feedback
     st.session_state.setdefault("improve_feedback", "")
     st.session_state.setdefault("testimonial", "")
     st.session_state.setdefault("willing_contact", False)
     st.session_state.setdefault("contact_name", "")
     st.session_state.setdefault("contact_email", "")
 
-    # Dashboard (per-session)
+    # Dashboard state
     st.session_state.setdefault("dashboard_bytes", None)
     st.session_state.setdefault("dashboard_filename", None)
     st.session_state.setdefault("dashboard_generated_at", None)
@@ -213,25 +209,20 @@ def compute_scores():
     freq_num = {qid: FREQ_MAP.get(st.session_state.freq_sel.get(qid)) for qid, _, _ in ITEMS}
     chg_num = {qid: CHANGE_MAP.get(st.session_state.chg_sel.get(qid)) for qid, _, _ in ITEMS}
 
-    # Overall (current frequency)
     freq_vals = [v for v in freq_num.values() if isinstance(v, (int, float))]
     overall = round1(safe_mean(freq_vals))
     overall_desc = overall_descriptor(overall)
 
-    # Domain averages (current frequency)
     domains = sorted({d for _, _, d in ITEMS})
     domain_scores = {}
     for dom in domains:
         dom_vals = [freq_num[qid] for qid, _, d in ITEMS if d == dom and isinstance(freq_num.get(qid), (int, float))]
         domain_scores[dom] = round1(safe_mean(dom_vals))
 
-    # Growth avg (only for items not NA)
     non_na_ids = [qid for qid, _, _ in ITEMS if freq_num.get(qid) is not None]
     chg_vals = [chg_num[qid] for qid in non_na_ids if isinstance(chg_num.get(qid), (int, float))]
     avg_change = safe_mean(chg_vals)
     growth = (avg_change is not None) and (avg_change > 0)
-
-    # Growth count
     inc_count = sum(1 for v in chg_vals if isinstance(v, (int, float)) and v > 0)
 
     return freq_num, chg_num, overall, overall_desc, domain_scores, avg_change, growth, inc_count, non_na_ids
@@ -239,7 +230,6 @@ def compute_scores():
 
 def required_missing_step1():
     missing = []
-
     ra = st.session_state.role_anchor
     if not ra:
         missing.append("Leadership role")
@@ -273,7 +263,6 @@ def required_missing_change(non_na_ids):
 
 
 def build_fingerprint():
-    """A stable-ish fingerprint to avoid generating multiple dashboards for the same submission in-session."""
     parts = [
         str(st.session_state.role_anchor or ""),
         st.session_state.role_anchor_other.strip(),
@@ -283,7 +272,6 @@ def build_fingerprint():
         str(st.session_state.scope or ""),
         st.session_state.scope_other.strip(),
     ]
-    # Add responses
     for qid, _, _ in ITEMS:
         parts.append(str(st.session_state.freq_sel.get(qid) or ""))
     for qid, _, _ in ITEMS:
@@ -307,12 +295,6 @@ def _set_autofit(shape):
 
 
 def replace_tokens_in_ppt(prs: Presentation, token_map: dict) -> None:
-    """Replace {{TOKEN}} occurrences across text frames.
-
-    Handles tokens that PowerPoint might split across multiple runs by 
-    aggregating paragraph text. Removes forced font sizing to prevent 
-    text spacing/overlapping issues.
-    """
     for slide in prs.slides:
         for shape in slide.shapes:
             if not getattr(shape, "has_text_frame", False):
@@ -320,7 +302,6 @@ def replace_tokens_in_ppt(prs: Presentation, token_map: dict) -> None:
             tf = shape.text_frame
             touched = False
             for p in tf.paragraphs:
-                # Combine runs to safely catch tokens split across runs
                 full_text = "".join(r.text for r in p.runs if r.text)
                 original_text = full_text
                 
@@ -331,8 +312,6 @@ def replace_tokens_in_ppt(prs: Presentation, token_map: dict) -> None:
                 if full_text != original_text:
                     touched = True
                     if p.runs:
-                        # Safely replace text in the first run and clear others
-                        # This preserves the paragraph's native template styling
                         p.runs[0].text = full_text
                         for r in p.runs[1:]:
                             r.text = ""
@@ -363,24 +342,20 @@ h1, h2, h3 { letter-spacing: -0.02em; }
 /* Radio groups: reduce vertical space */
 div[data-baseweb="radio"] > div { gap: 0.75rem !important; }
 
-/* Question text */
-.slei-q { font-size: 1.02rem; font-weight: 600; margin: 1.15rem 0 0.35rem 0; }
+/* Question text & Cards */
+.slei-q { font-size: 1.08rem; font-weight: 500; margin: 0.25rem 0 1rem 0; color: #1f2937; }
+.q-num { color: #0068c9; font-weight: 700; margin-right: 6px; }
 
 /* Slightly smaller radio labels */
 div[data-baseweb="radio"] label { font-size: 0.95rem; }
 
 /* Compact captions */
-.slei-cap { color: rgba(49,51,63,0.72); margin-top: -0.3rem; margin-bottom: 0.75rem; }
+.slei-cap { color: rgba(49,51,63,0.72); margin-top: -0.3rem; margin-bottom: 1.5rem; font-size: 1.05rem; }
 
 /* Section separators */
-.slei-divider { border-top: 1px solid rgba(49,51,63,0.14); margin: 1.1rem 0; }
+.slei-divider { border-top: 1px solid rgba(49,51,63,0.14); margin: 1.5rem 0; }
 </style>
 """
-
-
-def q_header(text: str):
-    st.markdown(f"<div class='slei-q'>{text}</div>", unsafe_allow_html=True)
-
 
 def divider():
     st.markdown("<div class='slei-divider'></div>", unsafe_allow_html=True)
@@ -413,61 +388,75 @@ Because leadership looks different across contexts, select one role and use it c
 # -----------------------
 if st.session_state.step == 1:
     st.header("Step 1 of 5 — Context")
-
-    st.session_state.role_anchor = st.selectbox(
-        "Which single leadership role will you use as your reference point? (required)",
-        [
+    
+    # Use two columns for demographic info to make the UI tighter
+    c1, c2 = st.columns(2)
+    
+    with c1:
+        ra_opts = [
             "My primary professional/employer role",
             "A volunteer or board leadership role",
             "A family or community leadership role",
             "Other",
-        ],
-        index=None,
-        placeholder="Select one…",
-    )
-    if st.session_state.role_anchor == "Other":
-        st.session_state.role_anchor_other = st.text_input(
-            "If Other, please specify (required)",
-            value=st.session_state.role_anchor_other,
+        ]
+        ra_idx = ra_opts.index(st.session_state.role_anchor) if st.session_state.role_anchor in ra_opts else None
+        st.session_state.role_anchor = st.selectbox(
+            "Which single leadership role will you use as your reference point? (required)",
+            ra_opts,
+            index=ra_idx,
+            placeholder="Select one…",
+        )
+        if st.session_state.role_anchor == "Other":
+            st.session_state.role_anchor_other = st.text_input(
+                "If Other, please specify (required)",
+                value=st.session_state.role_anchor_other,
+            )
+
+        years_opts = ["0–2", "3–5", "6–10", "11–15", "16–20", "21+"]
+        years_idx = years_opts.index(st.session_state.years) if st.session_state.years in years_opts else None
+        st.session_state.years = st.selectbox(
+            "Years of experience (required)",
+            years_opts,
+            index=years_idx,
+            placeholder="Select one…",
         )
 
-    st.session_state.profession = st.selectbox(
-        "Profession type (required)",
-        ["Student", "Resident", "Pharmacy Technician", "Pharmacist", "Other"],
-        index=None,
-        placeholder="Select one…",
-    )
-    if st.session_state.profession == "Other":
-        st.session_state.profession_other = st.text_input(
-            "If Other, please specify (required)",
-            value=st.session_state.profession_other,
+    with c2:
+        prof_opts = ["Student", "Resident", "Pharmacy Technician", "Pharmacist", "Other"]
+        prof_idx = prof_opts.index(st.session_state.profession) if st.session_state.profession in prof_opts else None
+        st.session_state.profession = st.selectbox(
+            "Profession type (required)",
+            prof_opts,
+            index=prof_idx,
+            placeholder="Select one…",
         )
+        if st.session_state.profession == "Other":
+            st.session_state.profession_other = st.text_input(
+                "If Other, please specify (required)",
+                value=st.session_state.profession_other,
+            )
 
-    st.session_state.years = st.selectbox(
-        "Years of experience (required)",
-        ["0–2", "3–5", "6–10", "11–15", "16–20", "21+"],
-        index=None,
-        placeholder="Select one…",
-    )
-
-    st.session_state.scope = st.selectbox(
-        "Leadership scope (required)",
-        [
+        scope_opts = [
             "Individual contributor (no direct reports)",
             "Supervisor / Manager of individuals",
             "Manager of managers",
             "Senior leader / executive",
             "Other",
-        ],
-        index=None,
-        placeholder="Select one…",
-    )
-    if st.session_state.scope == "Other":
-        st.session_state.scope_other = st.text_input(
-            "If Other, please specify (required)",
-            value=st.session_state.scope_other,
+        ]
+        scope_idx = scope_opts.index(st.session_state.scope) if st.session_state.scope in scope_opts else None
+        st.session_state.scope = st.selectbox(
+            "Leadership scope (required)",
+            scope_opts,
+            index=scope_idx,
+            placeholder="Select one…",
         )
+        if st.session_state.scope == "Other":
+            st.session_state.scope_other = st.text_input(
+                "If Other, please specify (required)",
+                value=st.session_state.scope_other,
+            )
 
+    divider()
     cols = st.columns([1, 7])
     with cols[0]:
         st.button("Next →", type="primary", on_click=go_next)
@@ -490,16 +479,22 @@ elif st.session_state.step == 2:
         unsafe_allow_html=True,
     )
 
+    # Wrap each question in a bordered container for cleaner UI
     for qid, text, _ in ITEMS:
-        q_header(f"Q{qid}. {text}")
-        st.session_state.freq_sel[qid] = st.radio(
-            label=f"freq_{qid}",
-            options=FREQ_OPTIONS,
-            index=None,
-            horizontal=True,
-            label_visibility="collapsed",
-            key=f"freq_{qid}",
-        )
+        with st.container(border=True):
+            st.markdown(f"<div class='slei-q'><span class='q-num'>Q{qid}.</span> {text}</div>", unsafe_allow_html=True)
+            
+            curr_val = st.session_state.freq_sel.get(qid)
+            idx = FREQ_OPTIONS.index(curr_val) if curr_val in FREQ_OPTIONS else None
+            
+            st.session_state.freq_sel[qid] = st.radio(
+                label=f"freq_{qid}",
+                options=FREQ_OPTIONS,
+                index=idx,
+                horizontal=True,
+                label_visibility="collapsed",
+                key=f"w_freq_{qid}",
+            )
 
     divider()
 
@@ -535,15 +530,20 @@ elif st.session_state.step == 3:
         for qid, text, _ in ITEMS:
             if qid not in non_na_ids:
                 continue
-            q_header(f"Q{qid}. {text}")
-            st.session_state.chg_sel[qid] = st.radio(
-                label=f"chg_{qid}",
-                options=CHANGE_OPTIONS,
-                index=None,
-                horizontal=True,
-                label_visibility="collapsed",
-                key=f"chg_{qid}",
-            )
+            with st.container(border=True):
+                st.markdown(f"<div class='slei-q'><span class='q-num'>Q{qid}.</span> {text}</div>", unsafe_allow_html=True)
+                
+                curr_val = st.session_state.chg_sel.get(qid)
+                idx = CHANGE_OPTIONS.index(curr_val) if curr_val in CHANGE_OPTIONS else None
+                
+                st.session_state.chg_sel[qid] = st.radio(
+                    label=f"chg_{qid}",
+                    options=CHANGE_OPTIONS,
+                    index=idx,
+                    horizontal=True,
+                    label_visibility="collapsed",
+                    key=f"w_chg_{qid}",
+                )
 
     divider()
 
@@ -592,6 +592,8 @@ elif st.session_state.step == 4:
         value=st.session_state.willing_contact,
     )
 
+    divider()
+
     cols = st.columns([1, 1, 6])
     with cols[0]:
         st.button("← Back", on_click=go_prev)
@@ -607,10 +609,13 @@ elif st.session_state.step == 5:
 
     if st.session_state.willing_contact:
         st.caption("If you’re comfortable, provide contact details so we can follow up about using your testimonial.")
-        st.session_state.contact_name = st.text_input("Name (optional)", value=st.session_state.contact_name)
-        st.session_state.contact_email = st.text_input("Email (optional)", value=st.session_state.contact_email)
+        c1, c2 = st.columns(2)
+        with c1:
+            st.session_state.contact_name = st.text_input("Name (optional)", value=st.session_state.contact_name)
+        with c2:
+            st.session_state.contact_email = st.text_input("Email (optional)", value=st.session_state.contact_email)
 
-    divider()
+        divider()
 
     cols = st.columns([1, 1, 6])
     with cols[0]:
