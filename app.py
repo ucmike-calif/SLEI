@@ -368,9 +368,10 @@ def divider():
 # App
 # =======================
 
+st.set_page_config(page_title="SLEI v2.0", layout="wide")
+
 init_state()
 
-st.set_page_config(page_title="SLEI v2.0", layout="wide")
 st.markdown(SURVEY_CSS, unsafe_allow_html=True)
 
 st.title("STAR Leadership Effectiveness Index (SLEI) – v2 Pilot")
