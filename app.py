@@ -284,7 +284,7 @@ def build_fingerprint():
 
 
 # =======================
-# PPTX token replacement
+# PPTX token replacement & shaping
 # =======================
 
 def _set_autofit(shape):
@@ -322,9 +322,40 @@ def replace_tokens_in_ppt(prs: Presentation, token_map: dict) -> None:
                 _set_autofit(shape)
 
 
-def build_dashboard_pptx_bytes(token_map: dict, template_path: str) -> bytes:
+def resize_bars_in_ppt(prs: Presentation, domain_scores: dict) -> None:
+    """
+    Finds template shapes by name and scales their width based on the score out of 5.0.
+    Requires the template shapes to be named exactly: Bar_Sight, Bar_Tenacity, Bar_Ability, Bar_Results
+    Assumes the shape in the template is scaled to represent a score of 5.0 (100% width).
+    """
+    bar_names = {
+        "Bar_Sight": "Sight",
+        "Bar_Tenacity": "Tenacity",
+        "Bar_Ability": "Ability",
+        "Bar_Results": "Results"
+    }
+    
+    for slide in prs.slides:
+        for shape in slide.shapes:
+            if shape.name in bar_names:
+                domain = bar_names[shape.name]
+                score = domain_scores.get(domain)
+                if score is not None:
+                    # Calculate percentage of max score (5.0). Constrain between 0 and 1.
+                    pct = min(max(score / 5.0, 0.0), 1.0)
+                    shape.width = int(shape.width * pct)
+
+
+def build_dashboard_pptx_bytes(token_map: dict, template_path: str, domain_scores: dict = None) -> bytes:
     prs = Presentation(template_path)
+    
+    # 1. Replace text tokens
     replace_tokens_in_ppt(prs, token_map)
+    
+    # 2. Resize domain bar shapes (if scores are provided)
+    if domain_scores:
+        resize_bars_in_ppt(prs, domain_scores)
+        
     bio = io.BytesIO()
     prs.save(bio)
     return bio.getvalue()
@@ -779,12 +810,13 @@ elif st.session_state.step == 5:
             )
             opp_next = "Identify one upcoming situation to practice each behavior intentionally."
 
+            # Cleaned up action plan text to resolve duplication
             action_prompt = (
-                "Complete this 60–90 day action plan (progress > perfection):\n\n"
-                "Primary behavior to strengthen (pick ONE): ________________________________\n\n"
-                "Situation to practice (next 60–90 days): _________________________________\n\n"
-                "What will success look like (observable): _________________________________\n\n"
-                "First next step (within 7 days): ________________________________________"
+                "Complete this 60–90 day action plan:\n\n"
+                "Primary behavior to strengthen (pick ONE): __________________________________\n\n"
+                "Situation to practice (next 60–90 days): ___________________________________\n\n"
+                "What will success look like (observable): ___________________________________\n\n"
+                "First next step (within 7 days): __________________________________________"
             )
 
             token_map = {
@@ -895,7 +927,12 @@ elif st.session_state.step == 5:
 
             # ----- Build PPTX bytes & store in session -----
             try:
-                ppt_bytes = build_dashboard_pptx_bytes(token_map=token_map, template_path=TEMPLATE_PATH)
+                # Note: Now passing domain_scores to power the bar graph resizer
+                ppt_bytes = build_dashboard_pptx_bytes(
+                    token_map=token_map, 
+                    template_path=TEMPLATE_PATH, 
+                    domain_scores=domain_scores
+                )
                 st.session_state.dashboard_bytes = ppt_bytes
                 st.session_state.dashboard_filename = dash_filename
                 st.session_state.dashboard_generated_at = dash_generated_at
