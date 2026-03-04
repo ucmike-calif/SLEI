@@ -766,7 +766,14 @@ elif st.session_state.step == 5:
                 best_growth_dom = "—"
                 best_growth_detail = "No change data available"
             else:
-                best_growth_detail = f"Most gains in {best_growth_dom.lower()} behaviors"
+                domain_examples = {
+                    "Sight": "(e.g., pausing to respond thoughtfully, testing assumptions)",
+                    "Tenacity": "(e.g., aligning major commitments, adjusting workload)",
+                    "Ability": "(e.g., focusing on actions within your control, developing others)",
+                    "Results": "(e.g., ensuring clarity before launching work, influencing stakeholders)"
+                }
+                ex_text = domain_examples.get(best_growth_dom, "")
+                best_growth_detail = f"Most gains in {best_growth_dom.lower()} behaviors {ex_text}"
 
             # Domain scores (current)
             sight = domain_scores.get("Sight")
