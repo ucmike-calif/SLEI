@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 
 import io
@@ -73,7 +74,8 @@ TOK = {
     "TENACITY": "{{TENACITY_SCORE}}",
     "ABILITY": "{{ABILITY_SCORE}}",
     "RESULTS": "{{RESULTS_SCORE}}",
-    "STRONGEST_GROWTH_DOM": "{{STRONGEST_GROWTH_DOMAIN}}",
+    "STRONGEST_DOMAIN": "{{STRONGEST_DOMAIN}}",  # Underneath the bar chart
+    "STRONGEST_GROWTH_DOM": "{{STRONGEST_GROWTH_DOMAIN}}", # Growth section
     "STRONGEST_GROWTH_DETAIL": "{{STRONGEST_DETAIL}}",
     "TOP_GROWTH_1": "{{TOP_GROWTH_ITEM_1}}",
     "TOP_GROWTH_2": "{{TOP_GROWTH_ITEM_2}}",
@@ -169,6 +171,7 @@ def append_row_to_sheet(ws, row):
 
 def init_state():
     st.session_state.setdefault("step", 1)
+    st.session_state.setdefault("last_viewed_step", 1)
 
     # Context
     st.session_state.setdefault("role_anchor", None)
@@ -382,6 +385,20 @@ st.markdown(
 Because leadership looks different across contexts, select one role and use it consistently so your responses are accurate and comparable.
 """
 )
+
+# Scroll to top if the page step has changed
+if st.session_state.step != st.session_state.last_viewed_step:
+    components.html(
+        """
+        <script>
+            const main = window.parent.document.querySelector('.main');
+            if (main) main.scrollTop = 0;
+            window.parent.scrollTo(0, 0);
+        </script>
+        """,
+        height=0
+    )
+    st.session_state.last_viewed_step = st.session_state.step
 
 # -----------------------
 # Step 1 of 5 — Context
@@ -660,7 +677,24 @@ elif st.session_state.step == 5:
             st.info("Dashboard already generated for this submission. Use the download button below.")
         else:
             # ----- Build dashboard token map -----
-            # Pick strongest reported growth items (largest positive change)
+            
+            # 1. Provide Developmental Insight for Current Top Strength
+            valid_domains = {d: v for d, v in domain_scores.items() if v is not None}
+            if valid_domains:
+                # Identify the domain with the highest score (sort by score descending, then alphabetical)
+                top_current_domain = max(valid_domains.items(), key=lambda x: (x[1], x[0]))[0]
+                
+                domain_insights = {
+                    "Sight": "Strength in Sight: You regularly pause to gain perspective. Leverage this to help your team navigate ambiguity and respond strategically.",
+                    "Tenacity": "Strength in Tenacity: You manage priorities and boundaries well. Model this discipline to foster sustainable high performance in your team.",
+                    "Ability": "Strength in Ability: You focus on what you can control. Use this proactive mindset to empower others to operate with greater independence.",
+                    "Results": "Strength in Results: You effectively drive clarity and alignment. Expand this impact by influencing stakeholders beyond your formal authority."
+                }
+                strongest_domain_text = domain_insights.get(top_current_domain, "")
+            else:
+                strongest_domain_text = "No domain scores available."
+
+            # 2. Pick strongest reported growth items (largest positive change)
             growth_candidates = []
             for qid, text, dom in ITEMS:
                 if freq_num.get(qid) is None:
@@ -703,7 +737,7 @@ elif st.session_state.step == 5:
                     best_growth_val = val
                     best_growth_dom = dom
 
-            # Short “detail” line
+            # Short “detail” line for the Strongest Area of Growth box
             if best_growth_dom is None:
                 best_growth_dom = "—"
                 best_growth_detail = "No change data available"
@@ -769,6 +803,9 @@ elif st.session_state.step == 5:
                 TOK["TENACITY"]: "—" if tenacity is None else f"{tenacity:.1f}",
                 TOK["ABILITY"]: "—" if ability is None else f"{ability:.1f}",
                 TOK["RESULTS"]: "—" if results is None else f"{results:.1f}",
+
+                # New developmental text for the top domain
+                TOK["STRONGEST_DOMAIN"]: strongest_domain_text,
 
                 TOK["STRONGEST_GROWTH_DOM"]: best_growth_dom,
                 TOK["STRONGEST_GROWTH_DETAIL"]: best_growth_detail,
