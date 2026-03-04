@@ -505,17 +505,15 @@ if st.session_state.step == 1:
                 value=st.session_state.scope_other,
             )
 
+    missing = required_missing_step1()
+    
     divider()
     cols = st.columns([1, 7])
     with cols[0]:
-        st.button("Next →", type="primary", on_click=go_next)
+        st.button("Next →", type="primary", on_click=go_next, disabled=bool(missing))
 
-    missing = required_missing_step1()
     if missing:
         st.info("To continue, complete: " + ", ".join(missing))
-
-    if st.session_state.step == 2 and missing:
-        st.session_state.step = 1
 
 
 # -----------------------
@@ -545,20 +543,17 @@ elif st.session_state.step == 2:
                 key=f"w_freq_{qid}",
             )
 
+    missing_qs = required_missing_freq()
+    
     divider()
-
     cols = st.columns([1, 1, 6])
     with cols[0]:
         st.button("← Back", on_click=go_prev)
     with cols[1]:
-        st.button("Next →", type="primary", on_click=go_next)
+        st.button("Next →", type="primary", on_click=go_next, disabled=bool(missing_qs))
 
-    missing_qs = required_missing_freq()
     if missing_qs:
         st.info(f"To continue, answer all current-frequency items (missing: {len(missing_qs)}).")
-
-    if st.session_state.step == 3 and missing_qs:
-        st.session_state.step = 2
 
 
 # -----------------------
@@ -594,20 +589,17 @@ elif st.session_state.step == 3:
                     key=f"w_chg_{qid}",
                 )
 
+    missing_chg = required_missing_change(non_na_ids) if non_na_ids else []
+    
     divider()
-
     cols = st.columns([1, 1, 6])
     with cols[0]:
         st.button("← Back", on_click=go_prev)
     with cols[1]:
-        st.button("Next →", type="primary", on_click=go_next)
+        st.button("Next →", type="primary", on_click=go_next, disabled=bool(missing_chg))
 
-    missing_chg = required_missing_change(non_na_ids)
     if non_na_ids and missing_chg:
         st.info(f"To continue, answer all change items shown (missing: {len(missing_chg)}).")
-
-    if st.session_state.step == 4 and non_na_ids and missing_chg:
-        st.session_state.step = 3
 
 
 # -----------------------
@@ -673,7 +665,7 @@ elif st.session_state.step == 5:
         submitted = st.button("Submit", type="primary")
 
     if submitted:
-        # Final validation
+        # Final safeguard validation (should not trigger now that pages block advancement)
         missing = required_missing_step1()
         if missing:
             st.error("Missing required fields: " + ", ".join(missing))
@@ -806,7 +798,7 @@ elif st.session_state.step == 5:
                 "Why this matters: small shifts in application compound — especially when you build repeatable habits in real situations."
             )
             top_growth_prompt = (
-                "Use this as a prompt: pick one real situation in the next 60–90 days where you’ll practice intentionally."
+                "Coaching Challenge: How can you leverage this momentum? Identify one upcoming situation where leaning into these growing strengths will expand your impact."
             )
             opp_next = "Identify one upcoming situation to practice each behavior intentionally."
 
